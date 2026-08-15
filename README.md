@@ -63,8 +63,14 @@ Inside the Sage environment:
 
 ```bash
 conda activate sage
-python -m pip install "git+https://github.com/starnotes-xj/sage-pycharm-stubgen.git"
+python -m pip install sage-pycharm-stubgen
 sage-pycharm-stubgen --install
+```
+
+To install the current development version directly from GitHub instead, use:
+
+```bash
+python -m pip install "git+https://github.com/starnotes-xj/sage-pycharm-stubgen.git"
 ```
 
 `--install` performs generation, strict validation, and installation in one

@@ -1,0 +1,47 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+      - uses: actions/upload-artifact@v5
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/sage-pycharm-stubgen
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

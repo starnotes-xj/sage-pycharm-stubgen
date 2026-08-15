@@ -58,8 +58,14 @@ x.sqrt(all=True)
 
 ```bash
 conda activate sage
-python -m pip install "git+https://github.com/starnotes-xj/sage-pycharm-stubgen.git"
+python -m pip install sage-pycharm-stubgen
 sage-pycharm-stubgen --install
+```
+
+如果要直接安装 GitHub 上的最新开发版本，可以改用：
+
+```bash
+python -m pip install "git+https://github.com/starnotes-xj/sage-pycharm-stubgen.git"
 ```
 
 `--install` 会用一条命令完成生成、严格验证和安装。中间生成目录位于
