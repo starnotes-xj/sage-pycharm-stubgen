@@ -1,5 +1,7 @@
 # Sage PyCharm Stubgen
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Generate and install static type stubs for SageMath so that PyCharm, Pyright,
 Jedi, and other Python-aware editors can understand dynamic Sage APIs such as
 `Mod`, `GF`, `PolynomialRing`, `matrix`, and `vector`.
@@ -89,6 +91,23 @@ The stubs then apply to every project using that interpreter. No custom
 PyCharm plugin is needed. For `.sage` files, PyCharm still needs an appropriate
 file-type association; this project provides Python type information rather
 than a Sage preparser language plugin.
+
+## Configure VS Code
+
+1. Install the official **WSL**, **Python**, and **Pylance** extensions.
+2. Open the project in a WSL window, for example by running `code .` in Ubuntu.
+3. Select the same Sage Python interpreter used to install the stubs.
+4. Open a Python file and request completion after `x.` in the example above.
+
+The generated stubs have been verified with Pyright 1.1.411: it resolves `x`
+as `IntegerMod_abstract`, exposes the `sqrt` signature, and resolves
+`sage.misc.persist.load` without errors. VS Code users do not need to install
+the Pyright CLI separately when using Pylance.
+
+Associating `*.sage` with the Python language can provide ordinary Python API
+completion, but Pylance does not understand Sage preparser-only syntax such as
+`R.<x> = PolynomialRing(...)`. This project is a type-stub generator, not a
+complete `.sage` language server.
 
 ## Update and uninstall
 
