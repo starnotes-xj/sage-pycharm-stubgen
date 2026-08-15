@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sage-pycharm-stubgen"
+version = "0.5.1"
+description = "Generate PyCharm-friendly type stubs from an installed SageMath package"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "starnotes-xj"}]
+keywords = ["sagemath", "pycharm", "type-stubs", "cython", "wsl"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Stubs Only",
+]
+dependencies = [
+    "stubgen-pyx>=0.2.18,<0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/starnotes-xj/sage-pycharm-stubgen"
+Repository = "https://github.com/starnotes-xj/sage-pycharm-stubgen"
+Issues = "https://github.com/starnotes-xj/sage-pycharm-stubgen/issues"
+
+[project.scripts]
+sage-pycharm-stubgen = "sage_pycharm_stubgen.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
