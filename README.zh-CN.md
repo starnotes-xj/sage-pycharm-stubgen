@@ -73,6 +73,11 @@ x.sqrt(all=True)
 中文 curated 文档、有限域元素类返回注解和降级安装保护自 **0.7.0**（当前
 PyPI 发行版）起提供。
 
+**想要英文文档？** 运行 `sage-pycharm-stubgen --doc-language en --install`：
+跳过 curated 中文文档（保留原始英文源码文档），但所有与语言无关的类型
+注解（返回类型、declare 签名、imports）仍然生效——英语用户不会因为装了
+本工具而看到看不懂的中文文档。
+
 ## 安装
 
 进入 Sage 环境后运行：
