@@ -179,6 +179,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only translate the first N untranslated docstrings (for testing)",
     )
     translate_parser.add_argument(
+        "--backend",
+        choices=["google", "baidu"],
+        default="google",
+        help=(
+            "Translation backend: 'google' (free endpoint, batched, may be "
+            "rate-limited) or 'baidu' (needs BAIDU_APPID/BAIDU_SECRET env "
+            "vars, 1 QPS standard tier)"
+        ),
+    )
+    translate_parser.add_argument(
         "--apply-only",
         action="store_true",
         help="Skip translating; only apply existing cache entries to the stubs",
@@ -260,11 +270,30 @@ def run_translate_docs(args: argparse.Namespace) -> int:
             pending = pending[: args.limit]
         total = len(pending)
         done = 0
+        import os
+
+        backend_kwargs = {}
+        if args.backend == "baidu":
+            backend_kwargs = {
+                "appid": os.environ.get("BAIDU_APPID"),
+                "secret": os.environ.get("BAIDU_SECRET"),
+            }
+            if not backend_kwargs["appid"] or not backend_kwargs["secret"]:
+                print(
+                    "The baidu backend needs BAIDU_APPID and BAIDU_SECRET "
+                    "environment variables.",
+                    file=sys.stderr,
+                )
+                return 2
         # Translate and persist in chunks so an interrupted run resumes from
         # the cache instead of restarting from zero.
         for start in range(0, total, 200):
             chunk = pending[start : start + 200]
-            translated, failed = translate_texts([doc for _, doc in chunk])
+            translated, failed = translate_texts(
+                [doc for _, doc in chunk],
+                backend=args.backend,
+                **backend_kwargs,
+            )
             cache.data.update(translated)
             cache.save()
             done += len(translated)

@@ -17,7 +17,9 @@ ships to every user without requiring network access.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
+import os
 import random
 import re
 import time
@@ -53,6 +55,70 @@ def _request_google_batch(texts: list[str], timeout: float = 20.0) -> dict[str, 
     return {src: dst.strip() for src, dst in zip(texts, parts) if dst.strip()}
 
 
+_BAIDU_MAX_BYTES = 6000
+
+
+def _baidu_translate_one(text: str, appid: str, secret: str, timeout: float = 20.0) -> str:
+    """Translate a single text through the Baidu general translation API."""
+    salt = str(random.randint(10000, 99999))
+    sign = hashlib.md5(f"{appid}{text}{salt}{secret}".encode("utf-8")).hexdigest()
+    data = urllib.parse.urlencode(
+        {"q": text, "from": "en", "to": "zh", "appid": appid, "salt": salt, "sign": sign}
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://fanyi-api.baidu.com/api/trans/vip/translate",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if payload.get("error_code"):
+        raise RuntimeError(
+            f"Baidu translate error {payload.get('error_code')}: {payload.get('error_msg')}"
+        )
+    parts = [item["dst"] for item in payload.get("trans_result", [])]
+    return "".join(parts).strip()
+
+
+def _baidu_translate_segmented(
+    text: str, appid: str, secret: str, timeout: float = 20.0
+) -> str:
+    """Translate ``text``, splitting overlong inputs at the 6000-byte limit."""
+    if len(text.encode("utf-8")) <= _BAIDU_MAX_BYTES:
+        return _baidu_translate_one(text, appid, secret, timeout)
+    segments: list[str] = []
+    remaining = text
+    while remaining:
+        cut = _BAIDU_MAX_BYTES
+        while cut > 0:
+            candidate = remaining[:cut]
+            if len(candidate.encode("utf-8")) <= _BAIDU_MAX_BYTES:
+                break
+            cut -= 256
+        if cut <= 0:
+            return ""
+        segments.append(candidate)
+        remaining = remaining[cut:]
+    return "".join(
+        _baidu_translate_one(segment, appid, secret, timeout) for segment in segments
+    )
+
+
+def _request_baidu_batch(
+    texts: list[str], appid: str, secret: str, timeout: float = 20.0
+) -> dict[str, str]:
+    """Translate each text individually through the Baidu API (1 QPS tier)."""
+    result: dict[str, str] = {}
+    for text in texts:
+        try:
+            translated = _baidu_translate_segmented(text, appid, secret, timeout)
+        except Exception:
+            continue
+        if translated:
+            result[text] = translated
+    return result
+
+
 def _backoff_sleep(pause: float, attempt: int, error: BaseException | None = None) -> None:
     """Sleep before a retry; HTTP 429 (rate limit) backs off much longer."""
     if isinstance(error, urllib.error.HTTPError) and error.code == 429:
@@ -62,12 +128,15 @@ def _backoff_sleep(pause: float, attempt: int, error: BaseException | None = Non
 
 
 def _try_translate(
-    texts: list[str], attempts: int, pause: float
+    texts: list[str],
+    attempts: int,
+    pause: float,
+    request_fn,
 ) -> tuple[dict[str, str], BaseException | None]:
     last_error: BaseException | None = None
     for attempt in range(attempts):
         try:
-            return _request_google_batch(texts), None
+            return request_fn(texts), None
         except Exception as exc:  # noqa: BLE001 - network errors are expected
             last_error = exc
             _backoff_sleep(pause, attempt, exc)
@@ -79,25 +148,34 @@ def translate_texts(
     batch_size: int = 8,
     pause: float = 2.0,
     attempts: int = 4,
+    backend: str = "google",
+    appid: str | None = None,
+    secret: str | None = None,
 ) -> tuple[dict[str, str], int]:
     """Translate ``texts``; returns ``(translated, failed_count)``.
 
-    Batches of ``batch_size`` go out as single requests; texts whose batch
-    round-trip breaks fall back to individual requests.  Transient errors —
-    including Google's HTTP 429 rate limiting — are retried with backoff, so
-    the caller can resume from the persistent cache after any interruption.
+    ``backend="google"`` uses the free Google endpoint with batched
+    requests; ``backend="baidu"`` uses the Baidu general translation API
+    (``appid``/``secret``, one request per text — the standard tier is 1
+    QPS, so keep the caller's pacing gentle).  Transient errors are retried
+    with backoff, and callers resume from the persistent cache after any
+    interruption.
     """
+    if backend == "baidu":
+        if not appid or not secret:
+            raise ValueError("Baidu backend requires BAIDU_APPID and BAIDU_SECRET")
+        request_fn = lambda texts: _request_baidu_batch(texts, appid, secret)
+        effective_batch = 1
+    else:
+        request_fn = _request_google_batch
+        effective_batch = batch_size
+
     translated: dict[str, str] = {}
     pending = [t for t in dict.fromkeys(texts) if t not in translated and t.strip()]
-    for start in range(0, len(pending), batch_size):
-        chunk = pending[start : start + batch_size]
-        result, _ = _try_translate(chunk, attempts, pause)
-        if result:
-            translated.update(result)
-        leftover = [t for t in chunk if t not in translated]
-        for single in leftover:
-            result, _ = _try_translate([single], attempts, pause)
-            translated.update(result)
+    for start in range(0, len(pending), effective_batch):
+        chunk = pending[start : start + effective_batch]
+        result, _ = _try_translate(chunk, attempts, pause, request_fn)
+        translated.update(result)
         time.sleep(pause)
     return translated, len(pending) - len(translated)
 

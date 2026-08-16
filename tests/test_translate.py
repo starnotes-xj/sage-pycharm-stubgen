@@ -48,6 +48,21 @@ class TranslateTextsTests(unittest.TestCase):
         self.assertEqual(translated, {})
         self.assertEqual(failed, 1)
 
+    def test_baidu_backend_requires_credentials(self) -> None:
+        with self.assertRaises(ValueError):
+            translate_texts(["a"], backend="baidu", pause=0)
+
+    def test_baidu_backend_translates_one_request_per_text(self) -> None:
+        def fake_baidu(texts, appid, secret):
+            return {t: f"中文:{t}" for t in texts}
+
+        with patch("sage_pycharm_stubgen.translate._request_baidu_batch", side_effect=fake_baidu):
+            translated, failed = translate_texts(
+                ["a", "b"], backend="baidu", appid="id", secret="sec", pause=0
+            )
+        self.assertEqual(failed, 0)
+        self.assertEqual(set(translated), {"a", "b"})
+
 
 class TranslationCacheTests(unittest.TestCase):
     def test_roundtrip_and_merge_precedence(self) -> None:
