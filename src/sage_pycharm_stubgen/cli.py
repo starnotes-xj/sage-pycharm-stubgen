@@ -101,25 +101,57 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not keep a .preparse-backup copy of rewritten files",
     )
+    preparse_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Convert again even when the file carries the conversion marker",
+    )
+    preparse_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print one JSON object per file on stdout (stable for IDE use)",
+    )
     return parser
 
 
 def run_preparse(args: argparse.Namespace) -> int:
+    import json
+    from dataclasses import asdict
+
     exit_code = 0
+    results = []
     for path in args.files:
         result = preparse_path(
             path,
             check_only=args.check,
             backup=not args.no_backup,
             output_dir=args.output,
+            force=args.force,
         )
+        results.append(result)
+        if result.error:
+            exit_code = 2
+        elif result.changed and args.check:
+            exit_code = 1
+
+    if args.json:
+        print(
+            json.dumps(
+                [
+                    {**asdict(item), "path": str(item.path), "backup": str(item.backup) if item.backup else None}
+                    for item in results
+                ],
+                ensure_ascii=False,
+            )
+        )
+        return exit_code
+
+    for result in results:
         if result.error:
             print(f"Failed: {result.path}: {result.error}", file=sys.stderr)
-            exit_code = 2
         elif result.changed:
             if args.check:
                 print(f"Needs preparse: {result.path}")
-                exit_code = 1
             else:
                 message = f"Preparsed: {result.path}"
                 if result.backup is not None:
