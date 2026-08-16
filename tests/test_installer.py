@@ -82,3 +82,14 @@ class InstallerTests(unittest.TestCase):
         self.assertLess(_version_tuple("0.0.0"), _version_tuple("0.7.0"))
         self.assertEqual(_version_tuple("0.7.0"), _version_tuple("0.7.0"))
         self.assertLess(_version_tuple("0.7.0"), _version_tuple("99.0.0"))
+
+    def test_package_version_matches_pyproject(self) -> None:
+        import tomllib
+
+        from sage_pycharm_stubgen import __version__
+
+        pyproject_path = (
+            Path(__file__).resolve().parents[1] / "pyproject.toml"
+        )
+        project = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        self.assertEqual(__version__, project["project"]["version"])

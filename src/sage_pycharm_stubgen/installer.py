@@ -15,12 +15,17 @@ CURATED_DOCS_NAME = ".sage-pycharm-stubgen-curated-docs.json"
 
 
 def _current_version() -> str:
+    # The version of the CODE being executed, not of whatever dist happens to
+    # be pip-installed: running the main branch from PYTHONPATH shadows an old
+    # installed release, and the manifest must record the writer's version.
+    from . import __version__
+
+    if __version__:
+        return __version__
     try:
         return importlib.metadata.version("sage-pycharm-stubgen")
     except importlib.metadata.PackageNotFoundError:
-        from . import __version__
-
-        return __version__
+        return "0"
 
 
 def _version_tuple(version: str) -> tuple[int, ...]:
