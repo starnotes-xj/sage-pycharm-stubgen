@@ -59,6 +59,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--doc-language",
+        choices=["zh", "en"],
+        default="zh",
+        help=(
+            "Docstring language: 'zh' applies the curated Chinese docs "
+            "(default); 'en' keeps the original English docstrings while "
+            "still applying the language-neutral type annotations"
+        ),
+    )
+    parser.add_argument(
         "--install",
         action="store_true",
         help=(
@@ -292,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         generate_all=not args.no_all_stub,
         use_runtime_docs=not args.no_runtime_docs,
         verbose=args.verbose,
+        doc_language=args.doc_language,
     )
     print(f"SageMath: {summary.sage_version}")
     print(f"Discovered: {summary.discovered}")

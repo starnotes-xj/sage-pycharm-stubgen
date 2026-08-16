@@ -138,6 +138,28 @@ class EnrichStubFileTests(unittest.TestCase):
         # The result must still be a valid stub.
         compile(content, "sample.pyi", "exec")
 
+    def test_filter_curated_language_keeps_type_knowledge(self) -> None:
+        from sage_pycharm_stubgen.docstring_enrich import filter_curated_language
+
+        entries = {
+            "FiniteField.from_integer": {
+                "doc": "中文文档。",
+                "return": "FiniteField_givaroElement",
+                "imports": ["from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement"],
+            },
+            "FiniteField.degree": {
+                "declare": "def degree(self) -> Integer",
+            },
+        }
+        zh = filter_curated_language(entries, "zh")
+        self.assertEqual(zh["FiniteField.from_integer"]["doc"], "中文文档。")
+
+        en = filter_curated_language(entries, "en")
+        self.assertNotIn("doc", en["FiniteField.from_integer"])
+        self.assertEqual(en["FiniteField.from_integer"]["return"], "FiniteField_givaroElement")
+        self.assertEqual(en["FiniteField.from_integer"]["imports"], entries["FiniteField.from_integer"]["imports"])
+        self.assertEqual(en["FiniteField.degree"]["declare"], "def degree(self) -> Integer")
+
     def test_curated_doc_and_return_override(self) -> None:
         stub = (
             "from typing import Any\n\n\n"

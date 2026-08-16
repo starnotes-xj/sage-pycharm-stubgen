@@ -474,6 +474,22 @@ def _local_names(tree: ast.AST) -> set[str]:
     }
 
 
+def filter_curated_language(entries: dict[str, dict[str, Any]], language: str) -> dict[str, dict[str, Any]]:
+    """Curated entries for a documentation language.
+
+    The ``doc`` text is language-specific; ``return`` / ``declare`` /
+    ``imports`` are language-neutral type knowledge and are kept in every
+    language.  For ``en``, the curated Chinese docstrings are dropped so the
+    source/runtime English docstrings remain visible.
+    """
+    if language == "zh":
+        return entries
+    return {
+        name: {key: value for key, value in entry.items() if key != "doc"}
+        for name, entry in entries.items()
+    }
+
+
 def _collect_imports(tree: ast.AST) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
@@ -1003,11 +1019,15 @@ def enrich_stubs(
     *,
     sage_package: Path,
     use_runtime: bool = True,
+    doc_language: str = "zh",
 ) -> EnrichmentSummary:
     """Enrich every generated stub under ``output_root/sage``.
 
     ``sage_package`` must be the installed Sage package directory; the
     sibling ``.pyx`` sources provide the extracted docstrings.
+    ``doc_language`` selects the curated docstrings (``"zh"`` or ``"en"``);
+    type knowledge (return/declare/imports) is language-neutral and always
+    applied.
     """
     summary = EnrichmentSummary()
     runtime = RuntimeDocProvider() if use_runtime else None
@@ -1019,7 +1039,7 @@ def enrich_stubs(
         source = sage_package / relative
         if not source.is_file():
             source = None
-        curated = SUPPLEMENTAL_DOCS.get(module_name, {})
+        curated = filter_curated_language(SUPPLEMENTAL_DOCS.get(module_name, {}), doc_language)
         enrich_stub_file(stub, source, curated, runtime, module_name, summary)
     if runtime is not None:
         summary.runtime_import_failures = runtime.failures

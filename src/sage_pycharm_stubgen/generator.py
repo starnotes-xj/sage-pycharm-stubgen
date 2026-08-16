@@ -389,16 +389,18 @@ def _factory_declaration(
     return import_line, f"def {name}{signature} -> {alias}: ..."
 
 
-def _factory_doc(name: str, value: Any) -> str | None:
+def _factory_doc(name: str, value: Any, doc_language: str = "zh") -> str | None:
     """Docstring for a ``sage.all`` factory declaration.
 
-    Prefers the curated Chinese docs for the factory's defining module;
-    falls back to the live runtime docstring.
+    Prefers the curated docs for the factory's defining module (for
+    ``doc_language="zh"``); falls back to the live runtime docstring —
+    which is also what English mode always uses.
     """
-    module_entries = SUPPLEMENTAL_DOCS.get(getattr(value, "__module__", ""), {})
-    entry = module_entries.get(name)
-    if entry and entry.get("doc"):
-        return entry["doc"]
+    if doc_language == "zh":
+        module_entries = SUPPLEMENTAL_DOCS.get(getattr(value, "__module__", ""), {})
+        entry = module_entries.get(name)
+        if entry and entry.get("doc"):
+            return entry["doc"]
     try:
         return inspect.getdoc(value)
     except (AttributeError, TypeError):
@@ -406,7 +408,9 @@ def _factory_doc(name: str, value: Any) -> str | None:
 
 
 def render_sage_all_stub(
-    namespace: Mapping[str, Any], factory_returns: Mapping[str, str] | None = None
+    namespace: Mapping[str, Any],
+    factory_returns: Mapping[str, str] | None = None,
+    doc_language: str = "zh",
 ) -> str:
     factory_returns = factory_returns or {}
     imports: list[str] = []
@@ -421,7 +425,7 @@ def render_sage_all_stub(
         value = namespace[name]
         if name in factory_returns:
             declaration = _factory_declaration(
-                name, value, factory_returns[name], _factory_doc(name, value)
+                name, value, factory_returns[name], _factory_doc(name, value, doc_language)
             )
             if declaration is not None:
                 imports.append(declaration[0])
@@ -452,6 +456,7 @@ def render_sage_all_stub(
 
 def generate_sage_all_stub(
     output_root: Path,
+    doc_language: str = "zh",
 ) -> tuple[Path, list[FactoryInference], list[str], list[str]]:
     import sage.all as sage_all
 
@@ -459,7 +464,7 @@ def generate_sage_all_stub(
     target.parent.mkdir(parents=True, exist_ok=True)
     inferences, unresolved = infer_factory_returns(dict(vars(sage_all)))
     factory_returns = factory_return_map(inferences)
-    content = render_sage_all_stub(dict(vars(sage_all)), factory_returns)
+    content = render_sage_all_stub(dict(vars(sage_all)), factory_returns, doc_language)
     target.write_text(content, encoding="utf-8")
     dynamic_unresolved = [
         match.group(1)
@@ -543,7 +548,10 @@ def generate(
     generate_all: bool = True,
     use_runtime_docs: bool = True,
     verbose: bool = False,
+    doc_language: str = "zh",
 ) -> GenerationSummary:
+    if doc_language not in {"zh", "en"}:
+        raise ValueError(f"Unsupported doc language: {doc_language!r}")
     detected_package, sage_version = detect_sage_package()
     package = (sage_package or detected_package).resolve()
     output_root = output_root.resolve()
@@ -645,6 +653,7 @@ def generate(
         output_root,
         sage_package=package,
         use_runtime=use_runtime_docs,
+        doc_language=doc_language,
     )
 
     if generate_all:
@@ -653,7 +662,7 @@ def generate(
             factory_inferred,
             factory_unresolved,
             dynamic_unresolved,
-        ) = generate_sage_all_stub(output_root)
+        ) = generate_sage_all_stub(output_root, doc_language)
         summary.enhanced.append(str(all_stub.relative_to(output_root)))
         summary.factory_inferred = [
             f"{item.name} -> {item.return_type}" for item in factory_inferred
