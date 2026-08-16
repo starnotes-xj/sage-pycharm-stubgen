@@ -107,6 +107,11 @@ PyCharm plugin is needed. For `.sage` files, PyCharm still needs an appropriate
 file-type association; see [Preparsing Sage syntax](#preparsing-sage-syntax)
 for converting Sage sugar to plain Python.
 
+Press Ctrl+Q on any Sage function name to see its description, return type,
+and examples (Chinese docs for 700+ common APIs); after a first install or
+upgrade, use **File → Invalidate Caches / Restart** if the docs do not show
+up.
+
 ## Configure VS Code
 
 1. Install the official **WSL**, **Python**, and **Pylance** extensions.

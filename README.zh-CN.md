@@ -42,7 +42,11 @@ x.sqrt(all=True)
 - 桥接 stubgen-pyx 为旧式 Parent 类遗漏的基类，让继承成员
   （`__getitem__`、`_first_ngens` 等）保持可达；
 - 补声明静态分析无法发现的 Sage 专属成员（`FiniteField.characteristic`、
-  `Integer` 的算术运算符）；
+  `Integer` 的算术运算符、`CategoryObject._first_ngens`）；
+- 为存根补充文档字符串，让 PyCharm 的快速文档（Ctrl+Q）能够说明函数的返回
+  值——其中 700 多个 CTF 常用 API（`GF`、`from_integer`/`to_integer`、`log`、
+  `discrete_log`、`CRT`、`xgcd` 等）配有中文说明和逐条在 Sage 里实际运行验证
+  过的示例；
 - 安装前验证每一个生成的存根；
 - 保留 Sage 自带或用户自己创建的 `.pyi` 文件；
 - 通过安装清单记录本工具拥有的文件，升级和卸载时不会删除其他文件。
@@ -102,7 +106,9 @@ x = Mod(5, 29)
 x.sqrt(all=True)
 ```
 
-在 `x.` 后按 `Ctrl+Space`，应能看到 `sqrt` 方法和参数提示。
+在 `x.` 后按 `Ctrl+Space`，应能看到 `sqrt` 方法和参数提示；把光标放在函数名上
+按 `Ctrl+Q`（快速文档）可以查看它的说明、返回类型和示例。首次安装或升级后若
+文档没有生效，执行 **文件 → 使缓存失效/重新启动**。
 
 对于 `.sage` 文件，PyCharm 仍需要合适的文件类型关联；`.py` 文件中的 Sage
 语法糖可以通过 [`preparse` 命令](#转换-sage-语法糖)转换为纯 Python。
@@ -137,6 +143,10 @@ sage-pycharm-stubgen --install
 sage-pycharm-stubgen --uninstall
 ```
 
+如果环境中已有旧工具残留的同名第三方 `.pyi` 文件，安装器默认会保留它们。
+需要用 `--install --overwrite-unowned` 显式接管：每个被替换的文件都会备份为
+`<名字>.pyi.sps-bak`，执行 `--uninstall` 时自动恢复。
+
 ## 转换 Sage 语法糖
 
 Sage preparser 的语法糖（`R.<x> = GF(2)[]`、`F.<a> = GF(2^8, ...)`、`^` 表示
@@ -170,6 +180,26 @@ AES 有限域练习文件转换后检查结果为 0 个错误。
 sage-pycharm-stubgen preparse a.py b.py c.py
 ```
 
+## 文档增强
+
+PyCharm 的快速文档（Ctrl+Q）读取的是存根函数的文档字符串**函数体**，因此生成
+器会在生成过程中从三个来源（按优先级）修复并填充文档字符串：
+
+1. **精选中文文档**（`supplemental_docs.py`）——700 多个 CTF 常用 API 的中文
+   说明、精确返回注解和验证过的 `sage:` 示例（有限域、多项式环、模运算、椭圆
+   曲线、矩阵、数论工具），每条例示例都在写入前针对已安装的 Sage 实际运行过。
+   用 `python tools/build_supplemental_docs.py <research-output.json>` 重建该
+   文件，用 `python tools/merge_supplemental_docs.py <research-output.json>`
+   合并新的研究成果。
+2. **源码文档字符串**——从已安装的 `.pyx` 源码提取，包括 `cpdef`/`cdef` 函数；
+   当存根的导入允许时，Cython 返回类型会把 `-> Any` 升级为具体类型。
+3. **运行时文档字符串**——逐个导入活动 Sage 环境中的模块，用
+   `inspect.getdoc` 补上源码里没有的文档（继承而来的、装饰器生成的）。这一轮
+   导入扫描需要几分钟，可用 `--no-runtime-docs` 关闭。
+
+这一过程还会把 stubgen-pyx 生成在 `def ...: ...` 之后的独立字符串语句移入函数
+体——那是 PyCharm 存根索引器唯一认可的文档位置。
+
 ## 高级生成选项
 
 如果只想生成一个较小的测试范围而不安装：
@@ -181,7 +211,8 @@ sage-pycharm-stubgen \
 ```
 
 输出目录中包含 `generation-report.json` 和生成的 `sage/` 存根目录树。工厂函数
-类型推断详情会写入 `sage/factory-inference.json`。
+类型推断详情会写入 `sage/factory-inference.json`，文档增强统计在报告中的
+`docstrings` 字段。
 
 ## 限制
 
