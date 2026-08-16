@@ -141,9 +141,25 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
     },
     "sage.matrix.matrix0": {
+        "Matrix.act_on_polynomial": {
+            "doc": '返回多项式 ``f`` 在 ``self`` 作用下的像 f(self*x)。\n\n参数:\n- ``f`` -- n 元多项式，其中 n 为方阵 ``self`` 的阶数（Polynomial）\n\n返回:\n多项式 -- 把每个变量 x_i 替换为第 i 行元素与变量向量 x 的内积后得到的多项式\n\n示例::\n\n    sage: R.<x, y> = QQ[]\n    sage: f = x^2 - y^2\n    sage: A = matrix(QQ, [[1, 2], [3, 4]])\n    sage: A.act_on_polynomial(f)\n    -8*x^2 - 20*x*y - 12*y^2',
+            "imports": ['from typing import Any'],
+        },
+        "Matrix.add_multiple_of_column": {
+            "doc": '把 ``s`` 倍的列 ``j`` 加到列 ``i`` 上（原地修改）。\n\n参数:\n- ``i`` -- 目标列下标（int）\n- ``j`` -- 来源列下标（int）\n- ``s`` -- 倍数（环元素）\n- ``start_row`` -- 操作的起始行，默认 0（int）\n- ``end_row`` -- 操作的终止行，默认 -1 表示最后一行（int）\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.add_multiple_of_column(1, 2, -1)\n    sage: a\n    [ 0 -1  2]\n    [ 3 -1  5]\n    sage: m = matrix(4, 3, range(12))\n    sage: m.add_multiple_of_column(0, 1, -2, start_row=1, end_row=2)\n    sage: m\n    [ 0  1  2]\n    [-5  4  5]\n    [-8  7  8]\n    [ 9 10 11]',
+            "return": 'None',
+        },
         "Matrix.add_multiple_of_row": {
             "doc": '原地把 s 倍的第 j 行加到第 i 行（即 row i += s * row j），可限制作用的列范围。\n\n参数:\n- ``i`` -- 被修改的行的索引（int，从 0 开始）\n- ``j`` -- 提供倍数的行的索引（int）\n- ``s`` -- 倍数标量（基环元素）\n- ``start_col`` -- 起始列，只作用于 start_col <= c <= end_col 的列，可为负数表示从末尾数（int，默认 0）\n- ``end_col`` -- 结束列（int，默认 -1 表示到行末）\n\n返回:\nNone -- 原地修改矩阵，无返回值；若 s 无法强转到基环则抛 TypeError\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.add_multiple_of_row(1, 0, -3)\n    sage: a\n    [ 0  1  2]\n    [ 3  1 -1]\n    sage: m = matrix(3, 4, range(12))\n    sage: m.add_multiple_of_row(0, 1, -2, start_col=1, end_col=2)\n    sage: m\n    [  0  -9 -10   3]\n    [  4   5   6   7]\n    [  8   9  10  11]',
             "return": 'None',
+        },
+        "Matrix.add_to_entry": {
+            "doc": '把元素 ``elt`` 加到矩阵的 ``(i, j)`` 位置上（原地修改）。\n\n参数:\n- ``i`` -- 行下标（int）\n- ``j`` -- 列下标（int）\n- ``elt`` -- 要加到该位置的元素\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 2, 2, [[0, 1], [2, 3]])\n    sage: M.add_to_entry(0, 1, 5)\n    sage: M\n    [0 6]\n    [2 3]',
+            "return": 'None',
+        },
+        "Matrix.anticommutator": {
+            "doc": '返回矩阵 ``self`` 与 ``other`` 的反对易子 AB + BA。\n\n参数:\n- ``other`` -- 与 ``self`` 同型的矩阵\n\n返回:\n矩阵 -- self*other + other*self\n\n示例::\n\n    sage: A = Matrix(ZZ, 2, 2, range(4))\n    sage: B = Matrix(ZZ, 2, 2, [0, 1, 0, 0])\n    sage: A.anticommutator(B)\n    [2 3]\n    [0 2]',
+            "imports": ['from typing import Any'],
         },
         "Matrix.base_ring": {
             "doc": '返回矩阵的基环。\n\n返回:\n环 -- 矩阵元素所在的基环\n\n示例::\n\n    sage: x = polygen(GF(2), "x")\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=("a",))\n    sage: a = F.gen()\n    sage: A = matrix(F, [[1, a], [a+1, a^2]])\n    sage: A.base_ring()\n    Finite Field in a of size 2^8',
@@ -156,6 +172,15 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回矩阵与 other 的交换子 A*B - B*A。\n\n参数:\n- ``other`` -- 同型方阵（Matrix）\n\n返回:\nMatrix -- 交换子 A*B - B*A\n\n示例::\n\n    sage: M1 = matrix(GF(7), [[1, 2], [3, 4]])\n    sage: M2 = matrix(GF(7), [[0, 1], [1, 0]])\n    sage: M1.commutator(M2)\n    [6 4]\n    [3 1]\n    sage: M1 * M2 - M2 * M1\n    [6 4]\n    [3 1]',
             "return": 'Matrix',
         },
+        "Matrix.dense_coefficient_list": {
+            "doc": '返回矩阵全部系数的列表。\n\n参数:\n- ``order`` -- 可选的指标集排序，即 ``(i, j)`` 元组的列表；默认 ``None`` 表示按行主序（等价于 ``list()``）（list，默认 ``None``）\n\n返回:\nlist -- 按给定顺序排列的所有元素\n\n示例::\n\n    sage: A = matrix([[1, 2, 3], [4, 5, 6]])\n    sage: A.dense_coefficient_list()\n    [1, 2, 3, 4, 5, 6]\n    sage: A.dense_coefficient_list([(1, 2), (1, 0), (0, 1), (0, 2), (0, 0), (1, 1)])\n    [6, 4, 2, 3, 1, 5]',
+            "return": 'list',
+        },
+        "Matrix.dict": {
+            "doc": '以字典形式返回矩阵的非零元素。\n\n参数:\n- ``copy`` -- 是否复制内部字典，默认 ``True``（bool）；为 ``True`` 时修改返回的字典不影响矩阵\n\n返回:\ndict -- 键为 ``(i, j)``、值为非零元素的字典（dict[tuple[int, int], Any]）\n\n示例::\n\n    sage: M = matrix(ZZ, 2, 2, [[0, 1], [2, 0]])\n    sage: M.dict()\n    {(0, 1): 1, (1, 0): 2}',
+            "return": 'dict[tuple[int, int], Any]',
+            "imports": ['from typing import Any'],
+        },
         "Matrix.dimensions": {
             "doc": '返回矩阵的维数（行数, 列数）。\n\n返回:\ntuple[int, int] -- 二元组 (行数, 列数)\n\n示例::\n\n    sage: matrix(ZZ, 3, 3, range(9)).dimensions()\n    (3, 3)\n    sage: matrix(ZZ, 2, 3, range(6)).dimensions()\n    (2, 3)',
             "return": 'tuple[int, int]',
@@ -163,6 +188,18 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Matrix.inverse_of_unit": {
             "doc": '返回矩阵在同一个矩阵空间中的逆元，要求矩阵在基环上可逆（基环不必有分式域）。\n\n参数:\n- ``algorithm`` -- 算法选择（str，默认 None）；None 或 "df"（division free，避免除法的余子式法）\n\n返回:\nMatrix -- 矩阵的逆；矩阵不可逆时抛 ZeroDivisionError\n\n示例::\n\n    sage: U = matrix(ZZ, 2, [1, 2, 3, 7])\n    sage: U.inverse_of_unit()\n    [ 7 -2]\n    [-3  1]\n    sage: U * U.inverse_of_unit()\n    [1 0]\n    [0 1]\n    sage: matrix(ZZ, 2, [1, 2, 3, 6]).inverse_of_unit()\n    Traceback (most recent call last):\n    ...\n    ZeroDivisionError: matrix must be nonsingular',
             "return": 'Matrix',
+        },
+        "Matrix.is_alternating": {
+            "doc": '判断矩阵是否为交错矩阵，即斜对称且对角线全为零的矩阵。\n\n返回:\nbool -- 是交错矩阵返回 ``True``，否则返回 ``False``。与 is_skew_symmetric 的区别在于对角线：例如在特征 2 域上，非零对角的矩阵可以是斜对称的但不是交错的\n\n示例::\n\n    sage: A = matrix(ZZ, [[0, 1], [-1, 0]])\n    sage: A.is_alternating()\n    True\n    sage: M = matrix(GF(2), [[1, 1], [1, 1]])\n    sage: M.is_skew_symmetric()\n    True\n    sage: M.is_alternating()\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_dense": {
+            "doc": '判断矩阵是否为稠密矩阵。\n\n返回:\nbool -- 稠密矩阵返回 ``True``，稀疏矩阵返回 ``False``\n\n示例::\n\n    sage: M = matrix(ZZ, 2, 2, range(4))\n    sage: M.is_dense()\n    True\n    sage: matrix(ZZ, 2, 2, range(4), sparse=True).is_dense()\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_hermitian": {
+            "doc": '判断矩阵是否等于其共轭转置（厄米矩阵）。\n\n返回:\nbool -- 方阵且等于逐项共轭后的转置时返回 ``True``，否则返回 ``False``；矩形矩阵恒为 ``False``。结果会被缓存\n\n示例::\n\n    sage: A = matrix(QQbar, [[1, I], [-I, 2]])\n    sage: A.is_hermitian()\n    True\n    sage: B = matrix(QQbar, [[1, I], [I, 2]])\n    sage: B.is_hermitian()\n    False',
+            "return": 'bool',
         },
         "Matrix.is_immutable": {
             "doc": '判断矩阵是否不可变（set_immutable 后被设置，可哈希）。\n\n返回:\nbool -- 矩阵不可变返回 True，否则返回 False\n\n示例::\n\n    sage: C = matrix(ZZ, 2, 2, [1, 2, 3, 4])\n    sage: C.is_immutable()\n    False\n    sage: C.set_immutable()\n    sage: C.is_immutable()\n    True',
@@ -180,6 +217,22 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '判断方阵是否奇异（不可逆）。\n\n返回:\nbool -- 矩阵不可逆（奇异）返回 True，可逆返回 False\n\n示例::\n\n    sage: matrix(GF(7), [[1, 2], [2, 4]]).is_singular()\n    True\n    sage: matrix(GF(7), [[1, 2], [3, 4]]).is_singular()\n    False\n    sage: matrix(GF(7), [[1, 2], [3, 4]]).is_invertible()\n    True',
             "return": 'bool',
         },
+        "Matrix.is_skew_hermitian": {
+            "doc": '判断矩阵是否等于其共轭转置的负矩阵（斜厄米矩阵）。\n\n返回:\nbool -- 方阵且等于逐项共轭转置的负矩阵时返回 ``True``，否则返回 ``False``。结果会被缓存\n\n示例::\n\n    sage: A = matrix(QQbar, [[0, I], [I, 0]])\n    sage: A.is_skew_hermitian()\n    True\n    sage: B = matrix(QQbar, [[0, I], [1, 0]])\n    sage: B.is_skew_hermitian()\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_skew_symmetric": {
+            "doc": '判断矩阵是否为斜对称矩阵（满足 A^T = -A）。\n\n返回:\nbool -- 方阵且转置等于其负矩阵时返回 ``True``，否则返回 ``False``\n\n示例::\n\n    sage: A = matrix(ZZ, [[0, 1], [-1, 0]])\n    sage: A.is_skew_symmetric()\n    True\n    sage: B = matrix(ZZ, [[0, 1], [1, 0]])\n    sage: B.is_skew_symmetric()\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_skew_symmetrizable": {
+            "doc": '判断矩阵是否可斜对称化，即是否存在可逆对角阵 D 使 DB 为斜对称矩阵。要求基环为有序整环。\n\n参数:\n- ``return_diag`` -- 若为 ``True`` 且可斜对称化，则额外返回 D 的对角线（bool，默认 ``False``）\n- ``positive`` -- 若为 ``True``，额外要求 D 的条目为正（bool，默认 ``True``）\n\n返回:\nbool 或 list -- 不可斜对称化时返回 ``False``；``return_diag=False`` 时可斜对称化返回 ``True``；``return_diag=True`` 时返回 D 的对角线列表\n\n示例::\n\n    sage: matrix([[0, 6], [3, 0]]).is_skew_symmetrizable()\n    False\n    sage: matrix([[0, 6], [3, 0]]).is_skew_symmetrizable(positive=False)\n    True\n    sage: M = matrix(4, [0, 1, 0, 0, -1, 0, -1, 0, 0, 2, 0, 1, 0, 0, -1, 0])\n    sage: M.is_skew_symmetrizable(return_diag=True)\n    [1, 1, 1/2, 1/2]',
+            "imports": ['from typing import Any'],
+        },
+        "Matrix.is_sparse": {
+            "doc": '判断矩阵是否为稀疏矩阵。\n\n返回:\nbool -- 稀疏矩阵返回 ``True``，否则返回 ``False``\n\n示例::\n\n    sage: M = matrix(ZZ, 2, 2, range(4), sparse=True)\n    sage: M.is_sparse()\n    True\n    sage: M.is_dense()\n    False',
+            "return": 'bool',
+        },
         "Matrix.is_square": {
             "doc": '判断矩阵是否为方阵（行数等于列数）。\n\n返回:\nbool -- 是方阵返回 True，否则返回 False\n\n示例::\n\n    sage: matrix(ZZ, 3, 3, range(9)).is_square()\n    True\n    sage: matrix(ZZ, 2, 3, range(6)).is_square()\n    False',
             "return": 'bool',
@@ -187,6 +240,14 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Matrix.is_symmetric": {
             "doc": '判断矩阵是否对称（A 等于其转置）。\n\n返回:\nbool -- 对称返回 True，否则返回 False\n\n示例::\n\n    sage: matrix(ZZ, 3, 3, [1, 2, 3, 2, 4, 5, 3, 5, 6]).is_symmetric()\n    True\n    sage: matrix(ZZ, 2, 2, [1, 2, 3, 4]).is_symmetric()\n    False',
             "return": 'bool',
+        },
+        "Matrix.is_symmetrizable": {
+            "doc": '判断矩阵是否可对称化，即是否存在可逆对角阵 D 使 DB 为对称矩阵。要求基环为有序整环。\n\n参数:\n- ``return_diag`` -- 若为 ``True`` 且可对称化，则额外返回 D 的对角线（bool，默认 ``False``）\n- ``positive`` -- 若为 ``True``，额外要求 D 的条目为正（bool，默认 ``True``）\n\n返回:\nbool 或 list -- 不可对称化时返回 ``False``；``return_diag=False`` 时可对称化返回 ``True``；``return_diag=True`` 时返回 D 的对角线列表\n\n示例::\n\n    sage: matrix([[0, 6], [3, 0]]).is_symmetrizable()\n    True\n    sage: matrix([[0, 6], [3, 0]]).is_symmetrizable(return_diag=True)\n    [1, 2]\n    sage: matrix([[1, 2], [3, 4]]).is_symmetrizable(return_diag=True)\n    [1, 2/3]\n    sage: matrix([[0, 6], [0, 0]]).is_symmetrizable(return_diag=True)\n    False',
+            "imports": ['from typing import Any'],
+        },
+        "Matrix.items": {
+            "doc": '返回由 ``((i, j), 值)`` 组成的可迭代对象。\n\n返回:\n可迭代对象 -- 形如 ``((i, j), 值)`` 的键值对，可能省略零元素（实际为 dict_items 视图）\n\n示例::\n\n    sage: M = matrix(ZZ, 2, 2, [[0, 1], [2, 0]])\n    sage: list(M.items())\n    [((0, 1), 1), ((1, 0), 2)]',
+            "imports": ['from typing import Any'],
         },
         "Matrix.iterates": {
             "doc": '设 A 为本矩阵、v 为自由模元素。rows=True 时返回行依次为 v, vA, vA^2, ..., vA^(n-1) 的矩阵；rows=False 时返回列依次为 v, Av, A^2v, ..., A^(n-1)v 的矩阵。\n\n参数:\n- ``v`` -- 自由模元素（vector）\n- ``n`` -- 迭代次数，非负整数（int）；n=0 时返回空矩阵\n- ``rows`` -- 为 True 时迭代向量作为行，为 False 时作为列（bool，默认 True）\n\n返回:\nMatrix -- 各次迭代向量构成的矩阵\n\n示例::\n\n    sage: A = matrix(ZZ, 2, [1, 1, 3, 5]); A\n    [1 1]\n    [3 5]\n    sage: v = vector([1, 0])\n    sage: A.iterates(v, 5)\n    [  1   0]\n    [  1   1]\n    [  4   6]\n    [ 22  34]\n    [124 192]\n    sage: A.iterates(v, 3, rows=False)\n    [ 1  1  4]\n    [ 0  3 18]',
@@ -197,6 +258,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'FreeModule_generic',
             "declare": 'def kernel(self, *args: Any, **kwargs: Any) -> FreeModule_generic',
             "imports": ['from sage.modules.free_module import FreeModule_generic', 'from typing import Any'],
+        },
+        "Matrix.linear_combination_of_columns": {
+            "doc": '返回以列表 ``v`` 为系数的列的线性组合。\n\n参数:\n- ``v`` -- 标量列表或向量，长度不超过列数；不足列数时自动补零（list 或 Vector）\n\n返回:\n向量 -- v[0]*第0列 + v[1]*第1列 + ... 的结果向量\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.linear_combination_of_columns([1, 1, 1])\n    (3, 12)\n    sage: a.linear_combination_of_columns(vector(ZZ, [1, 2, 3]))\n    (8, 26)',
+            "imports": ['from typing import Any'],
         },
         "Matrix.linear_combination_of_rows": {
             "doc": '返回以列表 v 中元素为系数的行的线性组合（自由模元素/向量）。\n\n参数:\n- ``v`` -- 标量列表或向量，长度不超过矩阵行数；不足时自动补零\n\n返回:\n向量（自由模元素） -- 各行按系数线性组合得到的向量\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6)); a\n    [0 1 2]\n    [3 4 5]\n    sage: a.linear_combination_of_rows([1, 2])\n    (6, 9, 12)\n    sage: a.linear_combination_of_rows([1/2, 2/3])\n    (2, 19/6, 13/3)\n    sage: a.linear_combination_of_rows([1])\n    (0, 1, 2)',
@@ -214,13 +279,29 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "Matrix.mutate": {
+            "doc": '在行和列下标 ``k`` 处对矩阵做突变（原地修改）。注意：仅当矩阵斜对称可对称化时才有意义。\n\n参数:\n- ``k`` -- 突变的行/列下标（int）\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 3, [0, 1, 0, -1, 0, -1, 0, 1, 0])\n    sage: M\n    [ 0  1  0]\n    [-1  0 -1]\n    [ 0  1  0]\n    sage: M.mutate(0)\n    sage: M\n    [ 0 -1  0]\n    [ 1  0 -1]\n    [ 0  1  0]',
+            "return": 'None',
+        },
         "Matrix.ncols": {
             "doc": '返回矩阵的列数。\n\n返回:\nint -- 矩阵的列数\n\n示例::\n\n    sage: matrix(ZZ, 3, 3, range(9)).ncols()\n    3\n    sage: matrix(ZZ, 2, 3, range(6)).ncols()\n    3',
             "return": 'int',
         },
+        "Matrix.nonpivots": {
+            "doc": '返回行简化阶梯形（RREF）中非主元列的列下标。\n\n返回:\ntuple -- 按升序排列的非主元列下标元组（tuple[int, ...]）\n\n示例::\n\n    sage: a = matrix(QQ, 3, 3, range(9))\n    sage: a.nonpivots()\n    (2,)\n    sage: identity_matrix(3).nonpivots()\n    ()',
+            "return": 'tuple[int, ...]',
+        },
         "Matrix.nonzero_positions": {
             "doc": '返回所有非零元素 (i, j) 位置的有序列表，其中 self[i, j] != 0。\n\n参数:\n- ``copy`` -- 是否允许安全修改返回的列表（bool，默认 True；copy=False 时返回内部列表，修改有风险）\n- ``column_order`` -- 为 True 时按列优先排序（bool，默认 False，即按行优先排序）\n\n返回:\nlist[tuple[int, int]] -- 非零元素的行列坐标对列表\n\n示例::\n\n    sage: a = matrix(QQ, 2, 3, [1, 2, 0, 2, 0, 0]); a\n    [1 2 0]\n    [2 0 0]\n    sage: a.nonzero_positions()\n    [(0, 0), (0, 1), (1, 0)]\n    sage: a.nonzero_positions(column_order=True)\n    [(0, 0), (1, 0), (0, 1)]',
             "return": 'list[tuple[int, int]]',
+        },
+        "Matrix.nonzero_positions_in_column": {
+            "doc": '返回第 ``i`` 列中非零元素所在的行下标列表。\n\n参数:\n- ``i`` -- 列下标（int）\n\n返回:\nlist -- 该列中非零元素的行下标，升序排列（list[int]）\n\n示例::\n\n    sage: a = matrix(QQ, 3, 2, [1, 2, 0, 2, 0, 0])\n    sage: a\n    [1 2]\n    [0 2]\n    [0 0]\n    sage: a.nonzero_positions_in_column(0)\n    [0]\n    sage: a.nonzero_positions_in_column(1)\n    [0, 1]',
+            "return": 'list[int]',
+        },
+        "Matrix.nonzero_positions_in_row": {
+            "doc": '返回第 ``i`` 行中非零元素所在的列下标列表。\n\n参数:\n- ``i`` -- 行下标（int）\n\n返回:\nlist -- 该行中非零元素的列下标，升序排列（list[int]）\n\n示例::\n\n    sage: a = matrix(QQ, 3, 2, [1, 2, 0, 2, 0, 0])\n    sage: a.nonzero_positions_in_row(0)\n    [0, 1]\n    sage: a.nonzero_positions_in_row(1)\n    [1]',
+            "return": 'list[int]',
         },
         "Matrix.nrows": {
             "doc": '返回矩阵的行数。\n\n返回:\nint -- 矩阵的行数（从 0 开始编号的行的个数）\n\n示例::\n\n    sage: matrix(ZZ, 3, 3, range(9)).nrows()\n    3\n    sage: matrix(ZZ, 2, 3, range(6)).nrows()\n    2',
@@ -232,8 +313,16 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "declare": 'def nullity(self) -> Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "Matrix.permute_columns": {
+            "doc": '按置换 ``permutation`` 排列矩阵的列（原地修改）。\n\n参数:\n- ``permutation`` -- 置换，可为 PermutationGroupElement 或 Permutation；列按 1 起始编号\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: M.permute_columns(Permutation([2, 3, 1]))\n    sage: M\n    [1 2 0]\n    [4 5 3]\n    [7 8 6]',
+            "return": 'None',
+        },
         "Matrix.permute_rows": {
             "doc": '用置换群元素对行进行置换（原地修改）。置换作用在编号 1 到 n 的行上，需传 PermutationGroupElement。\n\n参数:\n- ``permutation`` -- 一个置换群元素 PermutationGroupElement，按 {1, ..., n} 编号作用于行\n\n返回:\nNone -- 原地修改矩阵，无返回值\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: sigma = PermutationGroupElement("(1,2)")\n    sage: M.permute_rows(sigma)\n    sage: M\n    [3 4 5]\n    [0 1 2]\n    [6 7 8]',
+            "return": 'None',
+        },
+        "Matrix.permute_rows_and_columns": {
+            "doc": '同时按置换排列矩阵的行和列（原地修改）。\n\n参数:\n- ``row_permutation`` -- 行置换，可为 PermutationGroupElement 或 Permutation；行按 1 起始编号\n- ``column_permutation`` -- 列置换，同上\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: M.permute_rows_and_columns(Permutation([2, 3, 1]), Permutation([3, 2, 1]))\n    sage: M\n    [5 4 3]\n    [8 7 6]\n    [2 1 0]',
             "return": 'None',
         },
         "Matrix.pivots": {
@@ -245,8 +334,20 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "Matrix.rescale_col": {
+            "doc": '把第 ``i`` 列乘以标量 ``s``（原地修改）。\n\n参数:\n- ``i`` -- 列下标（int）\n- ``s`` -- 标量（环元素）\n- ``start_row`` -- 只从这一行开始及以下重缩放，默认 0（int）\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: a = matrix(QQ, 2, 3, range(6))\n    sage: a.rescale_col(2, 1/2)\n    sage: a\n    [  0   1   1]\n    [  3   4 5/2]',
+            "return": 'None',
+        },
         "Matrix.rescale_row": {
             "doc": '原地把第 i 行替换为 s 倍的该行（row i *= s），可限制作用的起始列。\n\n参数:\n- ``i`` -- 要缩放的行的索引（int，从 0 开始）\n- ``s`` -- 缩放标量（基环元素）\n- ``start_col`` -- 只缩放此列及右侧的条目（int，默认 0）\n\n返回:\nNone -- 原地修改矩阵，无返回值\n\n示例::\n\n    sage: a = matrix(QQ, 3, range(6)); a\n    [0 1]\n    [2 3]\n    [4 5]\n    sage: a.rescale_row(1, 1/2)\n    sage: a\n    [  0   1]\n    [  1 3/2]\n    [  4   5]',
+            "return": 'None',
+        },
+        "Matrix.reverse_rows_and_columns": {
+            "doc": '同时反转矩阵的行顺序和列顺序（原地修改），即把 m_{i,j} 变为 m_{nrows-i-1, ncols-j-1}。\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: m = matrix(ZZ, 2, 2, range(4))\n    sage: m.reverse_rows_and_columns()\n    sage: m\n    [3 2]\n    [1 0]',
+            "return": 'None',
+        },
+        "Matrix.set_col_to_multiple_of_col": {
+            "doc": '把第 ``i`` 列设为 ``s`` 倍的第 ``j`` 列（原地修改）。\n\n参数:\n- ``i`` -- 目标列下标（int）\n- ``j`` -- 来源列下标（int）\n- ``s`` -- 倍数（环元素）\n\n返回:\nNone -- 无返回值，直接修改矩阵\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.set_col_to_multiple_of_col(1, 0, -3)\n    sage: a\n    [ 0  0  2]\n    [ 3 -9  5]',
             "return": 'None',
         },
         "Matrix.set_immutable": {
@@ -257,6 +358,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '原地把第 i 行设为 s 倍的第 j 行（row i = s * row j）。\n\n参数:\n- ``i`` -- 被覆盖的行的索引（int，从 0 开始）\n- ``j`` -- 提供倍数的行的索引（int）\n- ``s`` -- 倍数标量（基环元素）；无法强转到基环时抛 TypeError\n\n返回:\nNone -- 原地修改矩阵，无返回值\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.set_row_to_multiple_of_row(1, 0, -3)\n    sage: a\n    [ 0  1  2]\n    [ 0 -3 -6]\n    sage: a.set_row_to_multiple_of_row(1, 0, 1/2)\n    Traceback (most recent call last):\n    ...\n    TypeError: Multiplying row by Rational Field element cannot be done over Integer Ring, use change_ring or with_row_set_to_multiple_of_row instead.',
             "return": 'None',
         },
+        "Matrix.str": {
+            "doc": "返回矩阵的字符串表示。\n\n参数:\n- ``rep_mapping`` -- 元素到字符串的映射，可为字典或可调用对象，默认 ``None``\n- ``zero`` -- 零元素的表示字符串，默认 ``None``（str）\n- ``plus_one`` -- 1 的表示字符串，默认 ``None``（str）\n- ``minus_one`` -- -1 的表示字符串，默认 ``None``（str）\n- ``unicode`` -- 是否用 Unicode 括号替代 ASCII 括号，默认 ``False``（bool）\n- ``shape`` -- 括号形状，``'square'`` 或 ``'round'``，默认 ``None``（str）\n- ``character_art`` -- 是否返回 AsciiArt/UnicodeArt 对象以便宽矩阵换行，默认 ``False``（bool）\n- ``left_border``, ``right_border`` -- 行标签序列，显示在括号外，默认 ``None``\n- ``top_border``, ``bottom_border`` -- 列标签序列，显示在括号外，默认 ``None``\n\n返回:\nstr -- 矩阵的字符串表示\n\n示例::\n\n    sage: M = matrix(ZZ, 2, 2, [[0, 1], [2, 3]])\n    sage: print(M.str())\n    [0 1]\n    [2 3]\n    sage: print(M.str(zero='.'))\n    [. 1]\n    [2 3]",
+            "return": 'str',
+        },
         "Matrix.swap_columns": {
             "doc": '原地交换矩阵的第 c1 列与第 c2 列（列索引从 0 开始）。\n\n参数:\n- ``c1`` -- 要交换的列的索引（int）\n- ``c2`` -- 要交换的另一列的索引（int）\n\n返回:\nNone -- 原地修改矩阵，无返回值\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: M.swap_columns(0, 2)\n    sage: M\n    [2 1 0]\n    [5 4 3]\n    [8 7 6]',
             "return": 'None',
@@ -265,13 +370,33 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '原地交换矩阵的第 r1 行与第 r2 行（行索引从 0 开始）。\n\n参数:\n- ``r1`` -- 要交换的行的索引（int）\n- ``r2`` -- 要交换的另一行的索引（int）\n\n返回:\nNone -- 原地修改矩阵，无返回值\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9)); M\n    [0 1 2]\n    [3 4 5]\n    [6 7 8]\n    sage: M.swap_rows(0, 2)\n    sage: M\n    [6 7 8]\n    [3 4 5]\n    [0 1 2]',
             "return": 'None',
         },
+        "Matrix.with_added_multiple_of_column": {
+            "doc": '把 ``s`` 倍的列 ``j`` 加到列 ``i`` 上，返回新矩阵。\n\n参数:\n- ``i`` -- 目标列下标（int）\n- ``j`` -- 来源列下标（int）\n- ``s`` -- 倍数（环元素）\n- ``start_row`` -- 操作的起始行，默认 0（int）\n- ``end_row`` -- 操作的终止行，默认 -1 表示最后一行（int）\n\n返回:\n矩阵 -- 运算结果；原矩阵不变\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: b = a.with_added_multiple_of_column(1, 2, -1)\n    sage: b\n    [ 0 -1  2]\n    [ 3 -1  5]\n    sage: a\n    [0 1 2]\n    [3 4 5]',
+            "imports": ['from typing import Any'],
+        },
         "Matrix.with_added_multiple_of_row": {
             "doc": '把 s 倍的第 j 行加到第 i 行并返回新矩阵，原矩阵保持不变。\n\n参数:\n- ``i`` -- 被修改的行的索引（int，从 0 开始）\n- ``j`` -- 提供倍数的行的索引（int）\n- ``s`` -- 倍数标量（基环元素）\n- ``start_col`` -- 起始列（int，默认 0）\n- ``end_col`` -- 结束列（int，默认 -1 表示到行末）\n\n返回:\nMatrix -- 行操作后的新矩阵\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.with_added_multiple_of_row(1, 0, -3)\n    [ 0  1  2]\n    [ 3  1 -1]\n    sage: a\n    [0 1 2]\n    [3 4 5]',
             "return": 'Matrix',
         },
+        "Matrix.with_col_set_to_multiple_of_col": {
+            "doc": '把第 ``i`` 列设为 ``s`` 倍的第 ``j`` 列，返回新矩阵。\n\n参数:\n- ``i`` -- 目标列下标（int）\n- ``j`` -- 来源列下标（int）\n- ``s`` -- 倍数（环元素）\n\n返回:\n矩阵 -- 运算结果；原矩阵不变\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.with_col_set_to_multiple_of_col(1, 0, 1/2)\n    [  0   0   2]\n    [  3 3/2   5]\n    sage: a\n    [0 1 2]\n    [3 4 5]',
+            "imports": ['from typing import Any'],
+        },
+        "Matrix.with_permuted_columns": {
+            "doc": '返回按置换排列列后的新矩阵。\n\n参数:\n- ``permutation`` -- 置换，可为 PermutationGroupElement 或 Permutation；列按 1 起始编号\n\n返回:\n矩阵 -- 列被置换后的矩阵；原矩阵不变\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: M.with_permuted_columns(Permutation([2, 3, 1]))\n    [1 2 0]\n    [4 5 3]\n    [7 8 6]',
+            "imports": ['from typing import Any'],
+        },
         "Matrix.with_permuted_rows": {
             "doc": '返回按置换对行进行置换后的新矩阵，原矩阵保持不变。\n\n参数:\n- ``permutation`` -- 一个置换群元素 PermutationGroupElement，按 {1, ..., n} 编号作用于行\n\n返回:\nMatrix -- 置换行后的新矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: sigma = PermutationGroupElement("(1,2)")\n    sage: M.with_permuted_rows(sigma)\n    [3 4 5]\n    [0 1 2]\n    [6 7 8]\n    sage: M\n    [0 1 2]\n    [3 4 5]\n    [6 7 8]',
             "return": 'Matrix',
+        },
+        "Matrix.with_permuted_rows_and_columns": {
+            "doc": '返回同时按置换排列行和列后的新矩阵。\n\n参数:\n- ``row_permutation`` -- 行置换，可为 PermutationGroupElement 或 Permutation；行按 1 起始编号\n- ``column_permutation`` -- 列置换，同上\n\n返回:\n矩阵 -- 行和列都被置换后的矩阵；原矩阵不变\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: M.with_permuted_rows_and_columns(Permutation([2, 3, 1]), Permutation([3, 2, 1]))\n    [5 4 3]\n    [8 7 6]\n    [2 1 0]',
+            "imports": ['from typing import Any'],
+        },
+        "Matrix.with_rescaled_col": {
+            "doc": '把第 ``i`` 列乘以标量 ``s``，返回新矩阵。\n\n参数:\n- ``i`` -- 列下标（int）\n- ``s`` -- 标量（环元素）\n- ``start_row`` -- 只从这一行开始及以下重缩放，默认 0（int）\n\n返回:\n矩阵 -- 重缩放后的矩阵；原矩阵不变\n\n示例::\n\n    sage: a = matrix(ZZ, 2, 3, range(6))\n    sage: a.with_rescaled_col(2, -2)\n    [  0   1  -4]\n    [  3   4 -10]\n    sage: a\n    [0 1 2]\n    [3 4 5]',
+            "imports": ['from typing import Any'],
         },
         "Matrix.with_rescaled_row": {
             "doc": '把第 i 行替换为 s 倍的该行并返回新矩阵，原矩阵保持不变。\n\n参数:\n- ``i`` -- 要缩放的行的索引（int，从 0 开始）\n- ``s`` -- 缩放标量（基环元素）\n- ``start_col`` -- 只缩放此列及右侧的条目（int，默认 0）\n\n返回:\nMatrix -- 缩放行后的新矩阵\n\n示例::\n\n    sage: a = matrix(QQ, 3, range(6))\n    sage: a.with_rescaled_row(1, 1/2)\n    [  0   1]\n    [  1 3/2]\n    [  4   5]\n    sage: a\n    [0 1]\n    [2 3]\n    [4 5]',
@@ -304,6 +429,9 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'FreeModuleElement',
             "imports": ['from sage.modules.free_module_element import FreeModuleElement'],
         },
+        "Matrix.column_ambient_module": {
+            "doc": '返回包含矩阵各列的自由模（其秩等于矩阵的行数）。\n\n参数:\n- ``base_ring`` -- 输出模块的基环（环，默认 None，即矩阵自身的基环）\n- ``sparse`` -- 是否返回稀疏模块（bool，默认 None，与矩阵自身稀疏性一致）\n\n返回:\nAny -- 包含各列的自由模（维数 = 行数）\n\n示例::\n\n    sage: A = matrix(ZZ, 2, 3, range(6))\n    sage: A.column_ambient_module()\n    Ambient free module of rank 2 over the principal ideal domain Integer Ring',
+        },
         "Matrix.columns": {
             "doc": '返回矩阵所有列的列表，每个元素是一个列向量。\n\n参数:\n- ``copy`` -- 布尔（默认 True）；为 False 时返回的列向量可能与原矩阵共享数据（视图）\n\n返回:\nlist -- 按列顺序排列的列向量列表，长度等于列数\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.columns()\n    [(1, 3), (2, 4)]',
             "return": 'list[FreeModuleElement]',
@@ -317,12 +445,24 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回删除指定行后的新矩阵（不修改自身）。\n\n参数:\n- ``drows`` -- 要删除的行索引的可迭代对象（如 list）；10.9 中不接受 slice\n- ``check`` -- 是否校验索引合法性（bool，默认 True）；索引越界时抛 IndexError，如 "[100] contains invalid indices"\n\n返回:\nMatrix -- 删除指定行后的新矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 4, 4, range(16))\n    sage: M.delete_rows([1, 3])\n    [ 0  1  2  3]\n    [ 8  9 10 11]\n    sage: M.delete_rows([0, 100])\n    Traceback (most recent call last):\n    ...\n    IndexError: [100] contains invalid indices',
             "return": 'Matrix',
         },
+        "Matrix.dense_columns": {
+            "doc": '返回矩阵各列组成的列表，其中每个向量为稠密向量。\n\n参数:\n- ``copy`` -- 是否返回副本以便安全修改（bool，默认 True）\n\n返回:\nlist[Any] -- 稠密列向量列表\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 2], [3, 4]])\n    sage: A.dense_columns()\n    [(1, 3), (2, 4)]',
+            "return": 'list[Any]',
+        },
         "Matrix.dense_matrix": {
             "doc": '返回与 self 等值的稠密矩阵（若自身已是稠密矩阵则返回自身）。\n\n返回:\nMatrix -- 稠密表示的同值矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9), sparse=True)\n    sage: M.is_sparse()\n    True\n    sage: D = M.dense_matrix(); D\n    [0 1 2]\n    [3 4 5]\n    [6 7 8]\n    sage: D.is_sparse()\n    False',
             "return": 'Matrix',
         },
+        "Matrix.dense_rows": {
+            "doc": '返回矩阵各行组成的列表，其中每个向量为稠密向量。\n\n参数:\n- ``copy`` -- 是否返回副本以便安全修改（bool，默认 True）\n\n返回:\nlist[Any] -- 稠密行向量列表\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 2], [3, 4]])\n    sage: A.dense_rows()\n    [(1, 2), (3, 4)]',
+            "return": 'list[Any]',
+        },
         "Matrix.lift": {
             "doc": '把矩阵提升（lift）到基环的覆盖环上：若基环定义了 cover_ring() 且与其不同，返回 change_ring 到覆盖环的矩阵；否则原样返回自身。\n\n返回:\nMatrix -- 提升到覆盖环后的矩阵。素域 GF(p) 矩阵提升到 ZZ（GF(7).cover_ring() 为 Integer Ring）；Zmod(n) 矩阵提升到 ZZ；对 Givaro 实现的有限域（GF(4)、GF(2^8) 等，无 cover_ring 属性）及 QQ 等环，返回自身（同一对象）\n\n示例::\n\n    sage: M = Matrix(Integers(7), 2, 2, [5, 9, 13, 15]); M\n    [5 2]\n    [6 1]\n    sage: M.lift()\n    [5 2]\n    [6 1]\n    sage: M.lift().parent()\n    Full MatrixSpace of 2 by 2 dense matrices over Integer Ring\n    sage: matrix(GF(7), [[1, 2], [3, 4]]).lift().parent()\n    Full MatrixSpace of 2 by 2 dense matrices over Integer Ring',
+            "return": 'Matrix',
+        },
+        "Matrix.lift_centered": {
+            "doc": '对 self 的每个条目应用居中原像提升：若基环为 Z/nZ，返回唯一的整数矩阵 m 满足 m ≡ self (mod n) 且每个条目满足 -n/2 < m[i,j] <= n/2；基环无 cover_ring 方法时原样返回 self。\n\n返回:\nMatrix -- 条目为居中原像的整数环矩阵\n\n示例::\n\n    sage: A = matrix(GF(7), [[5, 6], [1, 4]])\n    sage: A.lift_centered()\n    [-2 -1]\n    [ 1 -3]',
             "return": 'Matrix',
         },
         "Matrix.matrix_from_columns": {
@@ -331,6 +471,14 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Matrix.matrix_from_rows": {
             "doc": '返回由 rows 中指定行索引组成的子矩阵。\n\n参数:\n- ``rows`` -- 行索引的可迭代对象（如 list）；10.9 中不接受 slice，传 slice 抛 TypeError\n\n返回:\nMatrix -- 取指定行构成的新矩阵（列保持原有顺序）\n\n示例::\n\n    sage: M = matrix(ZZ, 4, 4, range(16))\n    sage: M.matrix_from_rows([0, 2])\n    [ 0  1  2  3]\n    [ 8  9 10 11]',
+            "return": 'Matrix',
+        },
+        "Matrix.matrix_from_rows_and_columns": {
+            "doc": '返回由 self 的给定行和列构成的子矩阵（行列索引可以乱序或重复）。\n\n参数:\n- ``rows`` -- 选取的行索引列表（list of int）\n- ``columns`` -- 选取的列索引列表（list of int）\n\n返回:\nMatrix -- 由指定行、列组成的子矩阵\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2, 3], [4, 5, 6], [7, 8, 9]])\n    sage: A.matrix_from_rows_and_columns([0, 2], [1, 2])\n    [2 3]\n    [8 9]',
+            "return": 'Matrix',
+        },
+        "Matrix.matrix_over_field": {
+            "doc": '返回 self 的副本，但其条目被视为基环的分式域中的元素（基环已是域时保持不变）。\n\n返回:\nMatrix -- 基环分式域上的矩阵副本\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 2], [3, 4]])\n    sage: A.matrix_over_field()\n    [1 2]\n    [3 4]',
             "return": 'Matrix',
         },
         "Matrix.matrix_space": {
@@ -348,6 +496,9 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'FreeModuleElement',
             "imports": ['from sage.modules.free_module_element import FreeModuleElement'],
         },
+        "Matrix.row_ambient_module": {
+            "doc": '返回包含矩阵各行的自由模（其秩等于矩阵的列数）。\n\n参数:\n- ``base_ring`` -- 输出模块的基环（环，默认 None，即矩阵自身的基环）\n- ``sparse`` -- 是否返回稀疏模块（bool，默认 None，与矩阵自身稀疏性一致）\n\n返回:\nAny -- 包含各行的自由模（维数 = 列数）\n\n示例::\n\n    sage: A = matrix(ZZ, 2, 3, range(6))\n    sage: A.row_ambient_module()\n    Ambient free module of rank 3 over the principal ideal domain Integer Ring',
+        },
         "Matrix.rows": {
             "doc": '返回矩阵所有行的列表，每个元素是一个行向量。\n\n参数:\n- ``copy`` -- 布尔（默认 True）；为 False 时返回的行向量可能与原矩阵共享数据（视图）\n\n返回:\nlist -- 按行顺序排列的行向量列表，长度等于行数\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.rows()\n    [(1, 2), (3, 4)]',
             "return": 'list[FreeModuleElement]',
@@ -361,9 +512,17 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '原地把第 row 行替换为 v 给出的内容。\n\n参数:\n- ``row`` -- 行的索引（int，从 0 开始）\n- ``v`` -- 新的行内容，可为列表或向量（list 或 vector，长度须等于列数）\n\n返回:\nNone -- 原地修改矩阵，无返回值\n\n示例::\n\n    sage: M = matrix(ZZ, 3, 3, range(9))\n    sage: M.set_row(0, [9, 9, 9])\n    sage: M\n    [9 9 9]\n    [3 4 5]\n    [6 7 8]\n    sage: M.set_row(1, vector([1, 2, 3]))\n    sage: M\n    [9 9 9]\n    [1 2 3]\n    [6 7 8]',
             "return": 'None',
         },
+        "Matrix.sparse_columns": {
+            "doc": '返回矩阵各列组成的列表，其中每个向量为稀疏向量（自由模元素）。\n\n参数:\n- ``copy`` -- 是否返回副本以便安全修改（bool，默认 True）\n\n返回:\nlist[Any] -- 稀疏列向量列表\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 2], [3, 4]])\n    sage: A.sparse_columns()\n    [(1, 3), (2, 4)]',
+            "return": 'list[Any]',
+        },
         "Matrix.sparse_matrix": {
             "doc": '返回与 self 等值的稀疏矩阵（若自身已是稀疏矩阵则返回自身）。\n\n返回:\nMatrix -- 稀疏表示的同值矩阵\n\n示例::\n\n    sage: D = matrix(ZZ, 3, 3, range(9)).dense_matrix()\n    sage: S = D.sparse_matrix(); S\n    [0 1 2]\n    [3 4 5]\n    [6 7 8]\n    sage: S.parent()\n    Full MatrixSpace of 3 by 3 sparse matrices over Integer Ring\n    sage: S.is_sparse()\n    True',
             "return": 'Matrix',
+        },
+        "Matrix.sparse_rows": {
+            "doc": '返回矩阵各行组成的列表，其中每个向量为稀疏向量（自由模元素）。\n\n参数:\n- ``copy`` -- 是否返回副本以便安全修改（bool，默认 True）\n\n返回:\nlist[Any] -- 稀疏行向量列表\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 2], [3, 4]])\n    sage: A.sparse_rows()\n    [(1, 2), (3, 4)]',
+            "return": 'list[Any]',
         },
         "Matrix.stack": {
             "doc": '把 bottom 纵向堆叠在本矩阵下方，返回新矩阵（列数必须一致）。\n\n参数:\n- ``bottom`` -- 放在下方的矩阵（Matrix，列数须相同）\n- ``subdivide`` -- 是否在两部分之间加细分分隔线（bool，默认 False）\n\n返回:\nMatrix -- 纵向堆叠后的新矩阵\n\n示例::\n\n    sage: A = matrix(ZZ, 2, 3, range(6))\n    sage: B = matrix(ZZ, 2, 3, range(6, 12))\n    sage: A.stack(B)\n    [ 0  1  2]\n    [ 3  4  5]\n    [ 6  7  8]\n    [ 9 10 11]\n    sage: A.stack(B, subdivide=True)\n    [ 0  1  2]\n    [ 3  4  5]\n    [--------]\n    [ 6  7  8]\n    [ 9 10 11]',
@@ -373,8 +532,21 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回由 self 中指定行列范围构成的子矩阵。\n\n参数:\n- ``row`` -- 起始行索引（int，从 0 开始，默认 0）\n- ``col`` -- 起始列索引（int，默认 0）\n- ``nrows`` -- 要取的行数（int，默认 -1 表示取起始行以下全部）\n- ``ncols`` -- 要取的列数（int，默认 -1 表示取起始列以右全部）\n\n返回:\nMatrix -- 指定范围的行列构成的子矩阵\n\n示例::\n\n    sage: M = matrix(ZZ, 4, 4, range(16)); M\n    [ 0  1  2  3]\n    [ 4  5  6  7]\n    [ 8  9 10 11]\n    [12 13 14 15]\n    sage: M.submatrix(1, 1)\n    [ 5  6  7]\n    [ 9 10 11]\n    [13 14 15]\n    sage: M.submatrix(1, 1, 2, 3)\n    [ 5  6  7]\n    [ 9 10 11]',
             "return": 'Matrix',
         },
+        "Matrix.zero_pattern_matrix": {
+            "doc": '返回一个 0-1 矩阵：self 中为零元的对应位置为 1，其余位置为 0（尺寸与 self 相同）。\n\n参数:\n- ``ring`` -- 输出矩阵的基环（环，默认 ZZ）\n\n返回:\nMatrix -- 同尺寸的稠密 0-1 矩阵（基环为 ring）\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 0], [0, 2], [3, 0]])\n    sage: A.zero_pattern_matrix()\n    [0 1]\n    [1 0]\n    [0 1]',
+            "return": 'Matrix',
+        },
     },
     "sage.matrix.matrix2": {
+        "Matrix.C": {
+            "doc": '返回矩阵的逐元素共轭，与 ``conjugate()`` 等价（属性）。对实数矩阵结果与自身相同，对复数矩阵才有意义。\n\n返回:\nAny -- 逐元素共轭后的矩阵（Matrix）\n\n示例::\n\n    sage: A = matrix(QQbar, [[I, 1], [2, 3]])\n    sage: A.C\n    [-1*I    1]\n    [   2    3]',
+        },
+        "Matrix.H": {
+            "doc": '返回矩阵的共轭转置（Hermitian 伴随），与 ``conjugate_transpose()`` 等价（属性）。\n\n返回:\nAny -- 共轭转置后的矩阵（Matrix）\n\n示例::\n\n    sage: A = matrix(QQbar, [[I, 1], [2, 3]])\n    sage: A.H\n    [-1*I    2]\n    [   1    3]',
+        },
+        "Matrix.LLL_gram": {
+            "doc": '返回对该 Gram 矩阵做 LLL 约化的整数变换矩阵 U（行列式为 1），使得 U^T * self * U 是 LLL 约化后的 Gram 矩阵；正定时总可工作。\n\n参数:\n- ``flag`` -- 传给 PARI qflllgram 的标志（int，默认 0；1 表示假设矩阵为整系数）\n\n返回:\nAny -- 整数稠密矩阵 U，det(U) = 1 且 U^T * self * U 为 LLL 约化矩阵；失败时抛出 ValueError\n\n示例::\n\n    sage: M = Matrix(ZZ, 2, 2, [5, 3, 3, 2])\n    sage: U = M.LLL_gram()\n    sage: U\n    [-1  1]\n    [ 1 -2]\n    sage: U.transpose() * M * U\n    [1 0]\n    [0 1]',
+        },
         "Matrix.LU": {
             "doc": "返回矩阵的 LU 分解。\n\n参数:\n- ``pivot`` -- 选主元策略（str，'auto'（默认，自动选择）/ 'partial'（按绝对值最大选主元）/ 'nonzero'（取第一个非零元））\n- ``format`` -- 输出格式（str，'plu'（默认）返回 (P, L, U) 满足 A = P*L*U；'compact' 返回 (行置换元组, L+U 打包的下上三角矩阵)）\n\n返回:\ntuple[Any, Any, Any] -- format='plu' 时三元组 (P, L, U)（P 为置换矩阵、L 单位下三角、U 上三角）；'compact' 时二元组。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[3,4]]).LU()\n    ([0 1]\n    [1 0], [  1   0]\n    [1/3   1], [  3   4]\n    [  0 2/3])",
             "return": 'tuple[Any, Any, Any]',
@@ -383,11 +555,32 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回 QR 分解 (Q, R)：Q 为酉矩阵、R 为上三角矩阵，且 A = Q*R。\n\n参数:\n- ``full`` -- 是否返回完整 QR 分解（bool，默认 True）；False 时 R 无零行且 Q 的列构成 A 列空间的一组标准正交基（仅精确/符号实现如 QQbar、SR 接受该参数；RDF/CDF 实现不接受）\n\n返回:\ntuple[Any, Any] -- (Q, R) 两个矩阵。基环中无法求平方根（如 QQ）时抛 TypeError。\n\n示例::\n\n    sage: Q, R = matrix(RDF, [[1,2],[3,4]]).QR()\n    sage: Q\n    [ -0.316227766016838 -0.9486832980505138]\n    [-0.9486832980505138   0.316227766016838]\n    sage: R\n    [-3.1622776601683795  -4.427188724235731]\n    [                0.0 -0.6324555320336751]',
             "return": 'tuple[Any, Any]',
         },
+        "Matrix.T": {
+            "doc": '返回矩阵的转置，与 ``transpose()`` 等价（属性）。\n\n返回:\nAny -- 转置后的矩阵（Matrix）\n\n示例::\n\n    sage: A = matrix(QQbar, [[I, 1], [2, 3]])\n    sage: A\n    [I 1]\n    [2 3]\n    sage: A.T\n    [I 2]\n    [1 3]',
+        },
         "Matrix.adjugate": {
             "doc": '返回伴随矩阵（各代数余子式矩阵的转置）。\n\n返回:\nMatrix -- 满足 A·adj(A) = det(A)·I 的伴随矩阵。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[3,4]]).adjugate()\n    [ 4 -2]\n    [-3  1]',
         },
         "Matrix.apply_map": {
             "doc": '把任意 Python 函数或可调用对象 phi 逐元素作用到矩阵的每个元素上，返回新矩阵。\n\n参数:\n- ``phi`` -- 任意 Python 函数或可调用对象（callable）\n- ``R`` -- 结果矩阵的基环（Ring，可选；缺省自动确定）\n- ``sparse`` -- 是否返回稀疏矩阵（bool，默认 False）\n\n返回:\nMatrix -- 逐元素应用 phi 后得到的新矩阵。\n\n示例::\n\n    sage: matrix(ZZ, [[1,2],[3,4]]).apply_map(lambda t: t**2)\n    [ 1  4]\n    [ 9 16]',
+        },
+        "Matrix.apply_morphism": {
+            "doc": '把环同态 phi 作用于稠密矩阵的每个系数上，结果矩阵定义在 phi 的陪域上。\n\n参数:\n- ``phi`` -- 环同态（morphism，要求 phi 可调用且 phi.codomain() 为环）\n\n返回:\nMatrix -- 每个系数经 phi 作用后的矩阵（定义在 phi 的陪域上）\n\n示例::\n\n    sage: R = PolynomialRing(QQ, ["x", "y"])\n    sage: (x, y) = R.gens()\n    sage: m = matrix(R, 2, [x, y, x**2, y**2])\n    sage: m.apply_morphism(R.hom([y, x]))\n    [  y   x]\n    [y^2 x^2]',
+            "return": 'Matrix',
+        },
+        "Matrix.as_bipartite_graph": {
+            "doc": '构造唯一表示该矩阵的二部图：左侧顶点编号 1 到 nrows 对应行，右侧顶点编号 nrows+1 到 nrows+ncols 对应列，每行与每列之间连一条权为对应矩阵元素值的边。\n\n返回:\nAny -- BipartiteGraph 二部图对象\n\n示例::\n\n    sage: M = matrix(QQ, [[1/3, 7], [6, 1/4], [8, -5]])\n    sage: M\n    [1/3   7]\n    [  6 1/4]\n    [  8  -5]\n    sage: B = M.as_bipartite_graph(); B\n    Bipartite graph on 5 vertices\n    sage: B.edges(sort=True)\n    [(1, 4, 1/3), (1, 5, 7), (2, 4, 6), (2, 5, 1/4), (3, 4, 8), (3, 5, -5)]',
+        },
+        "Matrix.as_sum_of_permutations": {
+            "doc": '把矩阵写成置换矩阵的带权和（权重为 1 或 -1），返回自由模（CombinatorialFreeModule）元素。\n\n返回:\nAny -- 置换矩阵的带权组合元素，显示为形如 B[[1, 2, 3]] 或 B[[1, 2]] + B[[2, 1]] 的表达式\n\n示例::\n\n    sage: Q = matrix(ZZ, [[1, 0, 0], [0, 1, 0], [0, 0, 1]])\n    sage: Q.as_sum_of_permutations()\n    B[[1, 2, 3]]\n    sage: matrix(ZZ, [[1, 1], [1, 1]]).as_sum_of_permutations()\n    B[[1, 2]] + B[[2, 1]]',
+        },
+        "Matrix.automorphisms_of_rows_and_columns": {
+            "doc": '返回在行、列置换作用下保持矩阵不变的全部自同构，表示为 (行置换, 列置换) 对的列表。\n\n返回:\nlist[tuple[Any, Any]] -- (行置换, 列置换) 对的列表，每个元素是 PermutationGroupElement 对的二元组\n\n示例::\n\n    sage: M = matrix(ZZ, [[1, 0], [1, 0], [0, 1]])\n    sage: M.automorphisms_of_rows_and_columns()\n    [((), ()), ((1,2), ())]',
+            "return": 'list[tuple[Any, Any]]',
+        },
+        "Matrix.block_ldlt": {
+            "doc": '计算 Hermitian 矩阵的块 LDL^T 分解 A = P*L*D*L^*P^T：允许 D 含 2x2 对角块，对任意实/复 Hermitian 矩阵都成立，且在 RDF 等不精确环上数值稳定。\n\n参数:\n- ``classical`` -- 是否尝试不带行、列交换的经典非块 LDL^T 分解（bool，默认 False）；无经典分解时抛出 ValueError\n\n返回:\ntuple[Any, Any, Any] -- 三元组 (P, L, D)：P 为置换矩阵，L 为单位下三角矩阵，D 为对角块大小为 1 或 2 的分块对角矩阵\n\n示例::\n\n    sage: A = matrix(QQ, [[0, 1, 0], [1, 1, 2], [0, 2, 0]])\n    sage: P, L, D = A.block_ldlt()\n    sage: P\n    [0 0 1]\n    [1 0 0]\n    [0 1 0]\n    sage: L\n    [  1   0   0]\n    [  2   1   0]\n    [  1 1/2   1]\n    sage: D\n    [ 1| 0| 0]\n    [--+--+--]\n    [ 0|-4| 0]\n    [--+--+--]\n    [ 0| 0| 0]\n    sage: P.transpose()*A*P == L*D*L.transpose()\n    True',
+            "return": 'tuple[Any, Any, Any]',
         },
         "Matrix.characteristic_polynomial": {
             "doc": "计算方阵的特征多项式 det(x*I - A)。\n\n参数:\n- ``var`` -- 变量名（默认 'x'）\n\n返回:\nPolynomial -- 基环上的特征多项式（首一多项式）\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.characteristic_polynomial()\n    x^2 + 2*x + 5",
@@ -416,10 +609,25 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Matrix.conjugate_transpose": {
             "doc": '返回共轭转置矩阵（先逐元素取复共轭再转置）。\n\n返回:\nMatrix -- 伴随矩阵 A^*。\n\n示例::\n\n    sage: matrix(CDF, [[1+I, 2],[3, 4-I]]).conjugate_transpose()\n    [1.0 - 1.0*I         3.0]\n    [        2.0 4.0 + 1.0*I]',
         },
+        "Matrix.cyclic_subspace": {
+            "doc": "创建向量 v 在矩阵作用下生成的循环（Krylov）子空间，由 {v, Av, A^2v, ...} 张成；可选返回迭代幂次之间的线性相关多项式（极小多项式）。\n\n参数:\n- ``v`` -- 长度与矩阵阶数相同的向量（vector）\n- ``var`` -- 若指定字符串或多项式环的生成元，则额外返回极小多项式（str 或 generator，默认 None）\n- ``basis`` -- 子空间的基：'echelon' 用行阶梯基，'iterates' 用最大线性无关的迭代向量 {v, Av, ..., A^{k-1}v} 作为用户基（默认 'echelon'）\n\n返回:\nAny -- 只给 v 时返回子空间（VectorSpace）；给出 var 时返回 (多项式, 子空间) 二元组\n\n示例::\n\n    sage: A = matrix(QQ, [[5, 4, 2, 1], [0, 1, -1, -1], [-1, -1, 3, 0], [1, 1, -1, 2]])\n    sage: v = vector(QQ, [0, 1, 0, 0])\n    sage: A.cyclic_subspace(v)\n    Vector space of degree 4 and dimension 3 over Rational Field\n    Basis matrix:\n    [ 1  0  0  0]\n    [ 0  1  0  0]\n    [ 0  0  1 -1]\n    sage: A.cyclic_subspace(v, var='T')\n    (T^3 - 9*T^2 + 24*T - 16, Vector space of degree 4 and dimension 3 over Rational Field\n    Basis matrix:\n    [ 1  0  0  0]\n    [ 0  1  0  0]\n    [ 0  0  1 -1])\n    sage: A.cyclic_subspace(v, basis='iterates')\n    Vector space of degree 4 and dimension 3 over Rational Field\n    User basis matrix:\n    [ 0  1  0  0]\n    [ 4  1 -1  1]\n    [23  1 -8  8]",
+        },
+        "Matrix.decomposition": {
+            "doc": '返回矩阵 A 所作用的自由模按特征多项式不可约因子的分解（对应特征值的 Galois 共轭类）。\n\n参数:\n- ``algorithm`` -- 算法（str，默认 "spin"）\n- ``is_diagonalizable`` -- 是否按可对角化简化计算（bool，默认 False，为 True 时用 ker(g(A)) 代替 ker(g(A)^n)）\n- ``dual`` -- 是否分解对偶空间（bool，默认 False）\n\n返回:\nAny -- 二元组 (W, is_irred) 的序列，W 为 A 作用下的极大不变子空间，is_irred 指示 A 在 W 上的特征多项式是否不可约\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 0], [0, 2]])\n    sage: A.decomposition()\n    [\n    (Vector space of degree 2 and dimension 1 over Finite Field of size 7\n    Basis matrix:\n    [0 1], True),\n    (Vector space of degree 2 and dimension 1 over Finite Field of size 7\n    Basis matrix:\n    [1 0], True)\n    ]',
+        },
+        "Matrix.decomposition_of_subspace": {
+            "doc": '设 self 的右作用保持子空间 M 不变，返回 M 的分解为 (W, is_irred) 二元组列表，is_irred 指示 self 在 W 上的特征多项式是否不可约。\n\n参数:\n- ``M`` -- 子空间（VectorSpace，self 作用空间的子空间）\n- ``check_restrict`` -- 是否调用 restrict 检查（bool，默认 True）\n- ``kwds`` -- 转发给 decomposition 方法的关键字参数\n\n返回:\nAny -- (W, is_irred) 二元组列表\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 0], [0, 2]])\n    sage: W = VectorSpace(GF(7), 2).span([[1, 0], [0, 1]])\n    sage: A.decomposition_of_subspace(W)\n    [\n    (Vector space of degree 2 and dimension 1 over Finite Field of size 7\n    Basis matrix:\n    [0 1], True),\n    (Vector space of degree 2 and dimension 1 over Finite Field of size 7\n    Basis matrix:\n    [1 0], True)\n    ]',
+        },
         "Matrix.denominator": {
             "doc": '返回所有元素分母的最小公倍数（对有理数矩阵）。\n\n返回:\nInteger -- 各元素分母的 lcm；元素不含分母（如整数矩阵）时为 1。\n\n示例::\n\n    sage: matrix(QQ, [[1/2, 1/3],[1/6, 1]]).denominator()\n    6',
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
+        },
+        "Matrix.density": {
+            "doc": '返回矩阵非零条目所占的比例（非零条目数除以总条目数）。\n\n返回:\nAny -- 比例值（精确环上为 Rational，浮点环上为 float）\n\n示例::\n\n    sage: V = matrix(ZZ, 2, 2); V[0,0] = 5; V[1,1] = -2\n    sage: V\n    [ 5  0]\n    [ 0 -2]\n    sage: V.density()\n    1/2',
+        },
+        "Matrix.derivative": {
+            "doc": "对矩阵的每个元素关于指定变量求导，返回同类型矩阵。\n\n参数:\n- ``*args`` -- 变量与求导次数，例如 ``derivative(x)`` 对 x 求一阶导，``derivative(x, 2)`` 对 x 求二阶导\n\n返回:\nAny -- 逐元素求导后的矩阵（Matrix，类型与 self 相同）\n\n示例::\n\n    sage: x = var('x')\n    sage: M = matrix(SR, [[x, x^2], [sin(x), cos(x)]])\n    sage: M\n    [     x    x^2]\n    [sin(x) cos(x)]\n    sage: M.derivative(x)\n    [      1     2*x]\n    [ cos(x) -sin(x)]\n    sage: M.derivative(x, 2)\n    [      0       2]\n    [-sin(x) -cos(x)]",
         },
         "Matrix.det": {
             "doc": '计算方阵的行列式，是 determinant() 的同义词。\n\n参数:\n无参数（det 还接受传给 determinant 的算法关键字）。\n\n返回:\n基环元素 -- 行列式值；ZZ 矩阵返回 Integer，GF(p) 矩阵返回 GF(p) 元素；非方阵抛 ValueError（"self must be a square matrix"）\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.det()\n    5',
@@ -443,6 +651,14 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": "原地（in-place）将矩阵化为行阶梯形，修改 self 自身，不返回新矩阵。\n\n参数:\n- ``algorithm`` -- 算法（默认 'default'）\n- ``cutoff`` -- 分治阈值（int，默认 0）\n\n返回:\nNone -- 无返回值，结果写入 self\n\n示例::\n\n    sage: E = matrix(GF(7), [[1,2],[3,4]])\n    sage: E.echelonize()\n    sage: E\n    [1 0]\n    [0 1]",
             "return": 'None',
         },
+        "Matrix.eigenmatrix_left": {
+            "doc": '返回左特征问题的矩阵 D 和 P：D 为特征值对角矩阵，P 的各行是对应特征向量（或零向量），满足 P*D = self*P。\n\n参数:\n- ``other`` -- 广义特征值问题中的矩阵 B（矩阵，默认 None，None 时为普通特征值问题）\n\n返回:\ntuple[Matrix, Matrix] -- 二元组 (D, P)，D 为对角矩阵，P 的行是对应特征向量\n\n示例::\n\n    sage: A = matrix(QQ, [[1, 2], [2, 1]])\n    sage: D, P = A.eigenmatrix_left()\n    sage: D\n    [ 3  0]\n    [ 0 -1]\n    sage: P\n    [ 1  1]\n    [ 1 -1]',
+            "return": 'tuple[Matrix, Matrix]',
+        },
+        "Matrix.eigenmatrix_right": {
+            "doc": '返回右特征问题的矩阵 D 和 P：D 为特征值对角矩阵，P 的各列是对应特征向量（或零向量），满足 self*P = P*D。\n\n参数:\n- ``other`` -- 广义特征值问题中的矩阵 B（矩阵，默认 None，None 时为普通特征值问题）\n\n返回:\ntuple[Matrix, Matrix] -- 二元组 (D, P)，D 为对角矩阵，P 的列是对应特征向量\n\n示例::\n\n    sage: A = matrix(QQ, [[1, 2], [2, 1]])\n    sage: D, P = A.eigenmatrix_right()\n    sage: D\n    [ 3  0]\n    [ 0 -1]\n    sage: P\n    [ 1  1]\n    [ 1 -1]',
+            "return": 'tuple[Matrix, Matrix]',
+        },
         "Matrix.eigenspaces_left": {
             "doc": "返回左特征空间列表 [(特征值, 特征空间), ...]。\n\n参数:\n- ``format`` -- 输出格式（str，'all'（默认）/'galois' 等）\n- ``var`` -- 扩域生成元名称（str，默认 'a'）\n- ``algebraic_multiplicity`` -- 是否同时返回代数重数（bool，默认 False）\n\n返回:\nlist[Any] -- [(特征值, 特征空间), ...]；algebraic_multiplicity=True 时增加代数重数。特征值不在基域时抛 NotImplementedError。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).eigenspaces_left()\n    [\n    (3, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [1 1]),\n    (-1, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [ 1 -1])\n    ]",
             "return": 'list[Any]',
@@ -450,6 +666,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Matrix.eigenspaces_right": {
             "doc": "返回右特征空间列表 [(特征值, 特征空间), ...]。\n\n参数:\n- ``format`` -- 输出格式（str，'all'（默认，含全部特征空间）/'galois'（有限域上按 Galois 轨道合并）等）\n- ``var`` -- 扩域生成元名称（str，默认 'a'）\n- ``algebraic_multiplicity`` -- 是否同时返回代数重数（bool，默认 False）\n\n返回:\nlist[Any] -- [(特征值, 特征空间), ...]；algebraic_multiplicity=True 时为 [(特征值, 特征空间, 代数重数), ...]。特征值不在基域时抛 NotImplementedError，可改用 format='galois'。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).eigenspaces_right()\n    [\n    (3, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [1 1]),\n    (-1, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [ 1 -1])\n    ]",
             "return": 'list[Any]',
+        },
+        "Matrix.eigenvalue_multiplicity": {
+            "doc": '返回 s 作为矩阵广义特征值的（代数）重数。\n\n参数:\n- ``s`` -- 特征值（环元素）\n\n返回:\nInteger -- s 的代数重数（非特征值为 0）\n\n示例::\n\n    sage: A = matrix(QQ, [[1, 2], [2, 1]])\n    sage: A.eigenvalue_multiplicity(3)\n    1',
+            "return": 'Integer',
         },
         "Matrix.eigenvalues": {
             "doc": "返回带重数的特征值序列。\n\n参数:\n- ``extend`` -- 是否允许在基域的扩域中求特征值（bool，默认 True）\n- ``algorithm`` -- 使用的算法（str，可选，如 'sage'/'flint'/'mpmath'/'pari' 等）\n\n返回:\nlist[Any] -- 特征值序列（按代数重数重复）；有理数矩阵给出 QQbar 元素，有限域矩阵在扩域（如 GF(7^2)）中给出；extend=False 时只返回基域内的特征值（可能为空列表）。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).eigenvalues()\n    [3, -1]\n    sage: matrix(GF(7), [[1,2],[3,4]]).eigenvalues()\n    [2*z2 + 5, 5*z2]\n    sage: matrix(GF(7), [[1,2],[3,4]]).eigenvalues(extend=False)\n    []",
@@ -467,6 +687,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回矩阵在 PID 上的初等因子列表（即 Smith 形对角元，满足 d_i 整除 d_{i+1}）。\n\n返回:\nlist[Any] -- 初等因子列表。\n\n示例::\n\n    sage: matrix(ZZ, [[2,4],[6,8]]).elementary_divisors()\n    [2, 4]',
             "return": 'list[Any]',
         },
+        "Matrix.elementwise_product": {
+            "doc": '返回两个同尺寸矩阵的逐元素乘积（Hadamard 积），结果 (i,j) 处为两矩阵 (i,j) 处元素的乘积。\n\n参数:\n- ``right`` -- 右操作数（Matrix，与 self 同尺寸）\n\n返回:\nMatrix -- 与 self、right 同尺寸的逐元素乘积矩阵\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2], [3, 4]])\n    sage: B = matrix(ZZ, [[2, 0], [1, 3]])\n    sage: A.elementwise_product(B)\n    [ 2  0]\n    [ 3 12]',
+            "return": 'Matrix',
+        },
         "Matrix.exp": {
             "doc": '返回矩阵指数 e^X = Σ_{k=0}^∞ X^k/k!。\n\n返回:\nMatrix -- 矩阵指数。对精确基环（如 QQ）上的矩阵经 maxima 的 matrixexp 做符号计算；对 RDF/CDF 直接数值计算。\n\n示例::\n\n    sage: matrix(CDF, [[0,1],[-1,0]]).exp()\n    [ 0.5403023058681397  0.8414709848078965]\n    [-0.8414709848078966  0.5403023058681397]\n\n注意：精确环路径依赖 maxima 的 linearalgebra 可正常加载；本验证环境中该模块因 ECL 编译缓存问题加载失败（TypeError: ECL says: loadfile: failed to load load-linearalgebra-lisp-files.lisp），故示例采用 CDF 数值路径。',
         },
@@ -478,6 +702,13 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Matrix.find": {
             "doc": '找出矩阵中满足约束函数 f 的元素。\n\n参数:\n- ``f`` -- 作用于每个元素的一元谓词函数（callable，如 lambda t: t == 1；传非可调用对象抛 TypeError）\n- ``indices`` -- 是否返回位置与元素（bool，默认 False）\n\n返回:\nAny -- indices=False 时返回 0/1 矩阵（f 为真的位置为 1，否则为 0）；indices=True 时返回字典 {(行, 列): 元素}，无满足元素时为空字典。\n\n示例::\n\n    sage: M = matrix(ZZ, [[1,2],[3,1]])\n    sage: M.find(lambda t: t == 1)\n    [1 0]\n    [0 1]\n    sage: M.find(lambda t: t == 1, indices=True)\n    {(0, 0): 1, (1, 1): 1}',
+        },
+        "Matrix.fitting_ideal": {
+            "doc": '返回矩阵的第 i 个 Fitting 理想，即由所有 (n-i) 阶子式（i 取 n 与 m 的较小值范围内）生成的理想。\n\n参数:\n- ``i`` -- Fitting 理想的指标（int）\n\n返回:\nAny -- 基环上的理想（ideal），元素为矩阵的所有适当阶子式\n\n示例::\n\n    sage: A = matrix(ZZ, [[2, 0], [0, 3]])\n    sage: A.fitting_ideal(0)\n    Principal ideal (6) of Integer Ring\n    sage: A.fitting_ideal(1)\n    Principal ideal (1) of Integer Ring',
+        },
+        "Matrix.get_bandwidth": {
+            "doc": '返回矩阵的带宽：即含有非零元的第 i 条上/下对角线中 |i| 的最大值。\n\n返回:\nInteger -- 矩阵带宽\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2, 0], [0, 1, 2], [0, 0, 1]])\n    sage: A.get_bandwidth()\n    1',
+            "return": 'Integer',
         },
         "Matrix.gram_schmidt": {
             "doc": '对行向量做 Gram-Schmidt 正交化，返回 (G, M) 使 A = M*G。\n\n参数:\n- ``orthonormal`` -- 是否同时单位化（bool，默认 False；RDF/CDF 上结果恒为单位化）\n\n返回:\ntuple[Any, Any] -- (G, M)：G 的行两两正交（orthonormal=True 时标准正交），M 为对角线上方元素全为零的全秩矩阵。\n\n示例::\n\n    sage: G, M = matrix(QQ, [[1,2],[3,4]]).gram_schmidt()\n    sage: G\n    [   1    2]\n    [ 4/5 -2/5]\n    sage: M\n    [   1    0]\n    [11/5    1]',
@@ -491,8 +722,20 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Matrix.hermite_form": {
             "doc": '返回矩阵的 Hermite 标准形（行阶梯形，对角元素非负）。\n\n参数:\n- ``include_zero_rows`` -- 是否包含零行（bool，默认 True）\n- ``transformation`` -- 是否同时返回变换矩阵 U（bool，默认 False），使 U*A = H\n\n返回:\nMatrix / tuple[Any, Any] -- transformation=False 时返回 H；True 时返回 (H, U)。\n\n示例::\n\n    sage: matrix(ZZ, [[2,3],[4,6]]).hermite_form()\n    [2 3]\n    [0 0]\n    sage: matrix(ZZ, [[2,3],[4,6]]).hermite_form(transformation=True)\n    ([2 3]\n    [0 0], [ 1  0]\n    [ 2 -1])',
         },
+        "Matrix.hessenberg_form": {
+            "doc": '返回 self 的 Hessenberg 形式（与 self 相似的上 Hessenberg 矩阵，除对角线下第一对角线外其余下三角元素为零）。\n\n返回:\nMatrix -- self 的 Hessenberg 形式（基环仅为整环时定义在分式域上）\n\n示例::\n\n    sage: A = matrix(QQ, [[1, 2, 3], [4, 5, 6], [7, 8, 9]])\n    sage: A.hessenberg_form()\n    [    1  29/4     3]\n    [    4  31/2     6]\n    [    0 -27/8  -3/2]',
+            "return": 'Matrix',
+        },
+        "Matrix.hessenbergize": {
+            "doc": '将 self 就地变换为 Hessenberg 形式（与 self 相似、特征多项式相同，除对角线下方第一条对角线外下三角为零）。\n\n返回:\nNone -- 无返回值，直接修改 self\n\n示例::\n\n    sage: A = matrix(QQ, [[2, 1, 1], [-2, 2, 2], [-1, -1, -1]])\n    sage: A.hessenbergize()\n    sage: A\n    [  2 3/2   1]\n    [ -2   3   2]\n    [  0  -3  -2]',
+            "return": 'None',
+        },
         "Matrix.image": {
             "doc": '返回矩阵的像，即列向量张成的子空间（或子模）。\n\n返回:\nModule -- 矩阵的列空间。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[3,5]]).image()\n    Vector space of degree 2 and dimension 2 over Rational Field\n    Basis matrix:\n    [1 0]\n    [0 1]',
+        },
+        "Matrix.indefinite_factorization": {
+            "doc": "把对称（或 Hermitian）矩阵分解为 A = L*D*L^T（Hermitian 情形为 L*D*L^*），其中 L 是单位下三角、D 是对角阵。\n\n参数:\n- ``algorithm`` -- 'symmetric'（对称）或 'hermitian'（Hermitian），默认 'symmetric'\n- ``check`` -- 是否校验输入矩阵与 algorithm 一致（bool，默认 True）\n\n返回:\ntuple[Any, Any] -- 二元组 (L, d)：L 为单位下三角矩阵，d 为对角元组成的向量（可用 diagonal_matrix(d) 还原 D）；若某个前导主子阵奇异则抛出 ValueError\n\n示例::\n\n    sage: A = matrix(QQ, [[3, -6, 9, 6, -9], [-6, 11, -16, -11, 17], [9, -16, 28, 16, -40], [6, -11, 16, 9, -19], [-9, 17, -40, -19, 68]])\n    sage: L, d = A.indefinite_factorization()\n    sage: L\n    [ 1  0  0  0  0]\n    [-2  1  0  0  0]\n    [ 3 -2  1  0  0]\n    [ 2 -1  0  1  0]\n    [-3  1 -3  1  1]\n    sage: d\n    (3, -1, 5, -2, -1)\n    sage: A == L * diagonal_matrix(d) * L.transpose()\n    True",
+            "return": 'tuple[Any, Any]',
         },
         "Matrix.integer_kernel": {
             "doc": '返回整数矩阵在环 ring 上的核，作为一个自由模。\n\n参数:\n- ``ring`` -- 系数环（Ring，默认 ZZ）\n\n返回:\nModule -- 核作为该环上的自由模（带 echelon 基矩阵）。\n\n示例::\n\n    sage: matrix(ZZ, [[2,4],[3,6]]).integer_kernel()\n    Free module of degree 2 and rank 1 over Integer Ring\n    Echelon basis matrix:\n    [ 3 -2]',
@@ -501,12 +744,31 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '计算方阵的逆矩阵。对 GF(p) 上可逆矩阵即模 p 逆矩阵。\n\n参数:\n无参数。\n\n返回:\nMatrix -- 与 self 同基环的逆矩阵，满足 A * A.inverse() = I。矩阵不可逆（在基环上）时抛出异常（如 ZeroDivisionError）\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.inverse()\n    [5 1]\n    [5 3]\n    sage: A * A.inverse()\n    [1 0]\n    [0 1]',
             "return": 'Matrix',
         },
+        "Matrix.inverse_positive_definite": {
+            "doc": '对正定矩阵利用 Cholesky/LDLT 等分解做快速数值稳定的求逆（类似 R 中的 cholinv）。\n\n返回:\nAny -- 矩阵的逆（Matrix），与 ``inverse()`` 结果一致；对非正定矩阵行为未定义\n\n示例::\n\n    sage: A = matrix(QQ, [[2, -1], [-1, 2]])\n    sage: A.is_positive_definite()\n    True\n    sage: A.inverse_positive_definite()\n    [2/3 1/3]\n    [1/3 2/3]\n    sage: A.inverse_positive_definite() == A.inverse()\n    True',
+        },
+        "Matrix.is_Z_operator_on": {
+            "doc": '判断矩阵是否在锥 K 上是 Z 算子：对任意正交的 x, y in K 满足 x^T * A * y <= 0（对非负卦限等价于非对角元素非正）。\n\n参数:\n- ``K`` -- 闭凸锥（polyhedral closed convex cone）\n\n返回:\nbool -- 矩阵是 Z 算子时返回 True，否则返回 False\n\n示例::\n\n    sage: K = Cone([(1,0,0), (0,1,0), (0,0,1)])\n    sage: matrix(QQ, [[1, -1, 0], [-1, 1, 0], [0, 0, 1]]).is_Z_operator_on(K)\n    True\n    sage: matrix(QQ, [[0, 1, 0], [1, 0, 0], [0, 0, 0]]).is_Z_operator_on(K)\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_bistochastic": {
+            "doc": '判断矩阵是否为双随机矩阵（所有条目非负，且每行、每列的和相等；normalized=True 时该和必须为 1）。\n\n参数:\n- ``normalized`` -- 是否要求行、列和为 1（bool，默认 True）；False 时只要求各行和等于各列和\n\n返回:\nbool -- 若是双随机矩阵则返回 True，否则返回 False\n\n示例::\n\n    sage: P = matrix(ZZ, [[1, 0, 0], [0, 0, 1], [0, 1, 0]])\n    sage: P.is_bistochastic()\n    True\n    sage: M = matrix(QQ, [[1, 1], [1, 1]])/2\n    sage: M\n    [1/2 1/2]\n    [1/2 1/2]\n    sage: M.is_bistochastic()\n    True\n    sage: N = matrix(ZZ, [[1, 1], [1, 1]])\n    sage: N.is_bistochastic()\n    False\n    sage: N.is_bistochastic(normalized=False)\n    True',
+            "return": 'bool',
+        },
+        "Matrix.is_cross_positive_on": {
+            "doc": '判断矩阵是否在锥 K 上 cross-positive：对任意正交的 x in K 与 s in K 的对偶锥，内积 <Lx, s> 非负。\n\n参数:\n- ``K`` -- 闭凸锥（polyhedral closed convex cone）\n\n返回:\nbool -- 精确基环上，矩阵 cross-positive 时返回 True；否则返回 False（符号环上无法判定时也返回 False）\n\n示例::\n\n    sage: K = Cone([(1,0,0), (0,1,0), (0,0,1)])\n    sage: matrix(QQ, [[0, 1, 0], [1, 0, 0], [0, 0, 0]]).is_cross_positive_on(K)\n    True\n    sage: matrix(QQ, [[0, -1, 0], [-1, 0, 0], [0, 0, 0]]).is_cross_positive_on(K)\n    False',
+            "return": 'bool',
+        },
         "Matrix.is_diagonal": {
             "doc": '判断矩阵是否为对角矩阵。\n\n返回:\nbool -- 所有非对角元为零返回 True，否则 False。\n\n示例::\n\n    sage: matrix(QQ, [[1,0],[0,2]]).is_diagonal()\n    True\n    sage: matrix(QQ, [[1,1],[0,2]]).is_diagonal()\n    False',
             "return": 'bool',
         },
         "Matrix.is_diagonalizable": {
             "doc": '判断矩阵是否可对角化。\n\n参数:\n- ``base_field`` -- 判定所用的域（Field，可选；缺省在基域上判定）\n\n返回:\nbool -- 可对角化返回 True，否则 False。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).is_diagonalizable()\n    True\n    sage: matrix(QQ, [[1,1],[0,1]]).is_diagonalizable()\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_lyapunov_like_on": {
+            "doc": '判断矩阵是否在锥 K 上是 Lyapunov 型算子：对任意正交的 x, y in K 满足 x^T * A * y = 0（对非负卦限等价于非对角元素全为 0）。\n\n参数:\n- ``K`` -- 闭凸锥（polyhedral closed convex cone）\n\n返回:\nbool -- 矩阵是 Lyapunov 型算子时返回 True，否则返回 False\n\n示例::\n\n    sage: K = Cone([(1,0,0), (0,1,0), (0,0,1)])\n    sage: matrix(QQ, [[1, 0, 0], [0, 2, 0], [0, 0, 3]]).is_lyapunov_like_on(K)\n    True\n    sage: matrix(QQ, [[0, 1, 0], [1, 0, 0], [0, 0, 0]]).is_lyapunov_like_on(K)\n    False',
             "return": 'bool',
         },
         "Matrix.is_nilpotent": {
@@ -521,8 +783,20 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '判断矩阵是否为单位矩阵。\n\n返回:\nbool -- 是单位矩阵返回 True，否则 False（非方阵恒为 False）。\n\n示例::\n\n    sage: matrix(QQ, [[1,0],[0,1]]).is_one()\n    True\n    sage: matrix(QQ, [[1,0],[0,2]]).is_one()\n    False',
             "return": 'bool',
         },
+        "Matrix.is_permutation_of": {
+            "doc": '判断是否存在行、列置换把 self 变为矩阵 N（即判断两个矩阵是否可通过行的重新排列与列的重新排列互化）。\n\n参数:\n- ``N`` -- 待比较的矩阵（Matrix）\n- ``check`` -- 若为 True，返回 (布尔值, 行、列置换对)；不存在时置换为 None（bool，默认 False）\n\n返回:\nbool | tuple[bool, Any] -- check=False 时返回布尔值；check=True 时返回 (是否存在, (行置换, 列置换)) 或 (False, None)\n\n示例::\n\n    sage: M = matrix(ZZ, [[1, 2, 3], [3, 5, 3], [2, 6, 4]])\n    sage: N = matrix(ZZ, [[3, 5, 3], [2, 6, 4], [1, 2, 3]])\n    sage: M.is_permutation_of(N)\n    True\n    sage: M.is_permutation_of(N, check=True)\n    (True, ((1,2,3), ()))\n    sage: matrix(ZZ, [[1, 2], [3, 4]]).is_permutation_of(matrix(ZZ, [[1, 2], [3, 5]]))\n    False',
+            "return": 'bool | tuple[bool, Any]',
+        },
         "Matrix.is_positive_definite": {
             "doc": '判断矩阵是否（Hermite）正定。\n\n返回:\nbool -- 正定返回 True，否则 False。\n\n示例::\n\n    sage: matrix(QQ, [[4,2],[2,3]]).is_positive_definite()\n    True\n    sage: matrix(QQ, [[4,2],[2,1]]).is_positive_definite()\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_positive_operator_on": {
+            "doc": '判断矩阵是否为锥上的正算子：K1 在矩阵作用下的像包含于 K2（默认 K2 = K1，即矩阵把锥映到自身）。\n\n参数:\n- ``K1`` -- 定义域锥（polyhedral closed convex cone）\n- ``K2`` -- 陪域锥（cone，默认与 K1 相同）\n\n返回:\nbool -- 精确基环上，矩阵为正算子时返回 True；否则返回 False（符号环上无法判定时也返回 False）\n\n示例::\n\n    sage: K = Cone([(1,0,0), (0,1,0), (0,0,1)])\n    sage: K\n    3-d cone in 3-d lattice N\n    sage: identity_matrix(QQ, 3).is_positive_operator_on(K)\n    True\n    sage: matrix(QQ, [[-1, 0, 0], [0, 1, 0], [0, 0, 1]]).is_positive_operator_on(K)\n    False',
+            "return": 'bool',
+        },
+        "Matrix.is_positive_semidefinite": {
+            "doc": '判断 Hermitian 矩阵是否半正定（所有特征值为非负实数）。\n\n返回:\nbool -- 若矩阵为 Hermitian 且半正定则返回 True，否则返回 False\n\n示例::\n\n    sage: matrix(ZZ, [[1, 2], [2, 4]]).is_positive_semidefinite()\n    True\n    sage: matrix(QQ, [[1, 2], [2, 1]]).is_positive_semidefinite()\n    False\n    sage: matrix(QQ, [[1, 2], [2, 4]]).is_positive_semidefinite()\n    True',
             "return": 'bool',
         },
         "Matrix.is_scalar": {
@@ -552,6 +826,18 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '计算方阵的若尔当标准形（Jordan canonical form）。特征值需位于基环或其扩域中。\n\n参数:\n- ``base_ring`` -- 可选的基环（默认自动选择）\n- ``sparse`` -- 是否稀疏（bool，默认 False）\n- ``subdivide`` -- 是否用细分线分隔若尔当块（bool，默认 True）\n- ``transformation`` -- 布尔（默认 False）；为 True 时额外返回变换矩阵 P\n- ``eigenvalues`` / ``check_input`` -- 可预先给定特征值/是否校验输入\n\n返回:\nMatrix -- 若尔当标准形 J。transformation=True 时返回元组 (J, P)，满足 P * J * P.inverse() == self\n\n示例::\n\n    sage: B = matrix(GF(7), [[1,1],[1,6]])\n    sage: B.jordan_form(subdivide=False)\n    [4 0]\n    [0 3]\n    sage: J, P = B.jordan_form(transformation=True)\n    sage: P * J * P.inverse() == B\n    True',
             "return": 'Matrix',
         },
+        "Matrix.kernel_on": {
+            "doc": '返回 self 限制到不变子空间 V 上的核（V 的向量子空间，同时是空间空间的自空间）。\n\n参数:\n- ``V`` -- 向量子空间（VectorSpace）\n- ``poly`` -- 多项式（多项式，默认 None；非 None 时改而计算 poly(self) 在 V 上的核）\n- ``check`` -- 是否检查 V 在 self 作用下不变（bool，默认 True）\n\n返回:\nAny -- 核子空间\n\n示例::\n\n    sage: V = VectorSpace(GF(7), 2)\n    sage: A = matrix(GF(7), [[1, 2], [2, 4]])\n    sage: A.kernel_on(V)\n    Vector space of degree 2 and dimension 1 over Finite Field of size 7\n    Basis matrix:\n    [1 3]',
+        },
+        "Matrix.krylov_basis": {
+            "doc": "计算 Krylov 矩阵行空间的基：按 shifts 顺序取前 r 个线性无关的行向量 E_i * M^j（r 为 Krylov 子空间的维数）。\n\n参数:\n- ``M`` -- 阶数等于 self 列数的方阵（Matrix）\n- ``shifts`` -- 行优先偏移列表（list[int] 或 None，默认全 0）\n- ``degrees`` -- 已知的每行最大指数列表或单个整数（list[int] 或 int 或 None，默认 self.ncols()）\n- ``output_rows`` -- 是否同时返回行位置信息（bool，默认 True）\n- ``algorithm`` -- 'naive'、'elimination' 或 None 由 Sage 自动选择（默认 None）\n\n返回:\nAny -- output_rows=False 时返回基矩阵；output_rows=True 时返回 (基矩阵, row_profile)，其中 row_profile 是 r 个三元组 (i, j, k)，表示基行是 E_i * M^j 且位于 Krylov 矩阵的第 k 行\n\n示例::\n\n    sage: E = matrix(GF(97), [[27, 49, 29], [50, 58, 0], [77, 10, 29]])\n    sage: M = matrix(GF(97), [[0, 1, 0], [0, 0, 1], [0, 0, 0]])\n    sage: E.krylov_basis(M)\n    ([27 49 29]\n    [50 58  0]\n    [ 0 27 49], ((0, 0, 0), (1, 0, 1), (0, 1, 3)))\n    sage: E.krylov_basis(M, output_rows=False)\n    [27 49 29]\n    [50 58  0]\n    [ 0 27 49]",
+        },
+        "Matrix.krylov_kernel_basis": {
+            "doc": '计算 Krylov 矩阵左核的紧致表示：把左核基元编码为多项式系数矩阵的紧凑形式。\n\n参数:\n- ``M`` -- 阶数等于 self 列数的方阵（Matrix）\n- ``shifts`` -- 行优先偏移列表（list[int] 或 None，默认全 0）\n- ``degrees`` -- 每行的最大指数列表或单个整数（list[int] 或 int 或 None，默认 self.ncols()）\n- ``output_rows`` -- 是否同时返回行位置信息（bool，默认 True）\n- ``var`` -- 多项式环的变量名（str 或 None，默认 None）\n- ``basis_algorithm`` -- 基算法选择（str 或 None，默认 None）\n\n返回:\nAny -- output_rows=False 时返回左核的多项式系数矩阵；output_rows=True 时返回 (系数矩阵, 行位置三元组列表)\n\n示例::\n\n    sage: E = matrix(GF(97), [[27, 49, 29], [50, 58, 0], [77, 10, 29]])\n    sage: M = matrix(GF(97), [[0, 1, 0], [0, 0, 1], [0, 0, 0]])\n    sage: E.krylov_kernel_basis(M)\n    ([82 76  0 40  0  1]\n    [13 57  0  3  1  0]\n    [96 96  1  0  0  0], ((0, 0, 0), (1, 0, 1), (2, 0, 2), (0, 1, 3), (1, 1, 4), (0, 2, 6)))',
+        },
+        "Matrix.krylov_matrix": {
+            "doc": '构造 Krylov 矩阵：把 self 的每一行 E_i 与乘法矩阵 M 的迭代 E_i * M^j 按 shifts 给定的优先顺序堆叠而成。\n\n参数:\n- ``M`` -- 阶数等于 self 列数的方阵（Matrix）\n- ``shifts`` -- 行优先偏移列表，长度等于 self.nrows()（list[int] 或 None，默认全 0）\n- ``degrees`` -- 每行的迭代次数上限列表或单个整数（list[int] 或 int 或 None，默认 self.ncols()）\n\n返回:\nAny -- Krylov 矩阵（Matrix）\n\n示例::\n\n    sage: E = matrix(GF(97), [[27, 49, 29], [50, 58, 0], [77, 10, 29]])\n    sage: M = matrix(GF(97), [[0, 1, 0], [0, 0, 1], [0, 0, 0]])\n    sage: E.krylov_matrix(M)\n    [27 49 29]\n    [50 58  0]\n    [77 10 29]\n    [ 0 27 49]\n    [ 0 50 58]\n    [ 0 77 10]\n    [ 0  0 27]\n    [ 0  0 50]\n    [ 0  0 77]\n    [ 0  0  0]\n    [ 0  0  0]\n    [ 0  0  0]\n    sage: E.krylov_matrix(M, degrees=2)\n    [27 49 29]\n    [50 58  0]\n    [77 10 29]\n    [ 0 27 49]\n    [ 0 50 58]\n    [ 0 77 10]\n    [ 0  0 27]\n    [ 0  0 50]\n    [ 0  0 77]',
+        },
         "Matrix.left_kernel": {
             "doc": "计算矩阵的左核：所有满足 v*A = 0 的行向量 v 构成的向量空间/自由模。左核维数 = 行数 - 秩。\n\n参数:\n- ``algorithm`` -- 算法关键字（默认 'default'）\n\n返回:\nFreeModule -- 左核空间，即 self.transpose() 的右核；可用 .dimension()、.basis() 获取维数与基\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2,3],[2,4,6]])\n    sage: A.left_kernel()\n    Vector space of degree 2 and dimension 1 over Finite Field of size 7\n    Basis matrix:\n    [1 3]",
             "return": 'FreeModule_generic',
@@ -565,10 +851,21 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "Matrix.matrix_window": {
+            "doc": '返回指向矩阵某个子区域的矩阵窗口（MatrixWindow）对象，对窗口的读写会反映到原矩阵。\n\n参数:\n- ``row`` -- 窗口起始行（int，默认 0）\n- ``col`` -- 窗口起始列（int，默认 0）\n- ``nrows`` -- 窗口行数（int，默认 -1 表示到矩阵底边）\n- ``ncols`` -- 窗口列数（int，默认 -1 表示到矩阵右边）\n- ``check`` -- 是否进行边界检查（bool，默认 True）\n\n返回:\nAny -- MatrixWindow 窗口对象\n\n示例::\n\n    sage: W = matrix(ZZ, [[1, 2, 3], [4, 5, 6], [7, 8, 9]])\n    sage: w = W.matrix_window(1, 1, 2, 2)\n    sage: w\n    Matrix window of size 2 x 2 at (1,1):\n    [1 2 3]\n    [4 5 6]\n    [7 8 9]\n    sage: w.nrows(), w.ncols()\n    (2, 2)',
+        },
+        "Matrix.maxspin": {
+            "doc": '计算使向量列表 [v, v*A, ..., v*A^n] 保持线性无关的最大整数 n，并返回该列表（向量为行向量、作用为右作用）。\n\n参数:\n- ``v`` -- 向量（Vector，self 的行空间的元素）\n\n返回:\nlist[Any] -- 最长线性无关向量列表 [v, v*A, ..., v*A^n]\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 0], [0, 2]])\n    sage: v = vector(GF(7), [1, 0])\n    sage: A.maxspin(v)\n    [(1, 0)]',
+            "return": 'list[Any]',
+        },
         "Matrix.minimal_polynomial": {
             "doc": "计算方阵的最小多项式：使 m(A) = 0 的次数最小的首一多项式，必整除特征多项式。\n\n参数:\n- ``var`` -- 变量名（默认 'x'）\n\n返回:\nPolynomial -- 基环上的最小多项式\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.minimal_polynomial()\n    x^2 + 2*x + 5",
             "return": 'Polynomial',
             "imports": ['from sage.rings.polynomial.polynomial_element import Polynomial'],
+        },
+        "Matrix.minors": {
+            "doc": '返回 self 的所有 k x k 子式（删除若干行和列所得方阵的行列式）组成的列表。\n\n参数:\n- ``k`` -- 子式的阶数（Integer，需满足 0 <= k <= m 且 k <= n）\n\n返回:\nlist[Any] -- 所有 k x k 子式的列表，按字典序行优先排列\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2], [3, 4]])\n    sage: A.minors(2)\n    [-2]',
+            "return": 'list[Any]',
         },
         "Matrix.minpoly": {
             "doc": "计算方阵的最小多项式（minimal_polynomial 的缩写）。\n\n参数:\n- ``var`` -- 变量名（默认 'x'）\n\n返回:\nPolynomial -- 基环上使 m(A) = 0 的次数最小的首一多项式\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.minpoly()\n    x^2 + 2*x + 5\n    sage: matrix(ZZ, [[0,1],[1,0]]).minpoly()\n    x^2 - 1",
@@ -581,11 +878,59 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Matrix.numerical_approx": {
             "doc": '返回各元素数值近似后的矩阵。\n\n参数:\n- ``prec`` -- 精度位数（int，可选，默认 53）\n- ``digits`` -- 十进制有效位数（int，可选，与 prec 二选一）\n- ``algorithm`` -- 算法（str，可选）\n\n返回:\nMatrix -- 元素近似为浮点数（RR/RDF）的矩阵。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[3,4]]).numerical_approx()\n    [1.00000000000000 2.00000000000000]\n    [3.00000000000000 4.00000000000000]\n    sage: matrix(QQ, [[1,2],[3,4]]).numerical_approx(digits=5)\n    [1.0000 2.0000]\n    [3.0000 4.0000]',
         },
+        "Matrix.permanent": {
+            "doc": '返回矩阵的积和式（permanent），即所有对角乘积（a_{1,pi(1)} ... a_{m,pi(m)}，pi 为单射）之和。\n\n参数:\n- ``algorithm`` -- 使用的算法（str，默认 "Ryser"）\n\n返回:\nInteger -- 矩阵的积和式\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2], [3, 4]])\n    sage: A.permanent()\n    10',
+            "return": 'Integer',
+        },
+        "Matrix.permanental_minor": {
+            "doc": '返回矩阵的 k 阶积和式小量：所有 k x k 子矩阵的积和式之和（最大阶积和式小量即积和式本身）。\n\n参数:\n- ``k`` -- 阶数（Integer）\n- ``algorithm`` -- 使用的算法（str，默认 "Ryser"）\n\n返回:\nInteger -- 所有 k x k 子矩阵积和式之和\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2], [3, 4]])\n    sage: A.permanental_minor(1)\n    10\n    sage: A.permanental_minor(2)\n    10',
+            "return": 'Integer',
+        },
+        "Matrix.permutation_normal_form": {
+            "doc": '对 self 施以所有可能的行、列置换得到的矩阵集合中，按逐行字典序最大的矩阵（置换正规形）。\n\n参数:\n- ``check`` -- 若为 True，额外返回把 self 变为最大矩阵的行、列置换（bool，默认 False）\n\n返回:\nAny -- 默认只返回最大矩阵（Matrix）；check=True 时返回 (最大矩阵, (行置换, 列置换)) 二元组\n\n示例::\n\n    sage: M = matrix(ZZ, [[0, 0, 1], [1, 0, 2], [0, 0, 0]])\n    sage: M.permutation_normal_form()\n    [2 1 0]\n    [1 0 0]\n    [0 0 0]\n    sage: M.permutation_normal_form(check=True)\n    ([2 1 0]\n    [1 0 0]\n    [0 0 0], ((1,2), (1,3,2)))',
+        },
+        "Matrix.pfaffian": {
+            "doc": '返回交替（反对称）矩阵 self 的 Pfaffian（结果会被缓存）。\n\n参数:\n- ``algorithm`` -- 算法（str，默认 None；可选 "bfl"（Bär-Faddeev-LeVerrier）或 "definition"）\n- ``check`` -- 是否检查 self 的交替性与方阵性（bool，默认 True）\n\n返回:\nAny -- self 的 Pfaffian 值（基环元素）\n\n示例::\n\n    sage: A = matrix(ZZ, [[0, 2, 0, 0], [-2, 0, 0, 0], [0, 0, 0, 3], [0, 0, -3, 0]])\n    sage: A.pfaffian()\n    6',
+        },
+        "Matrix.pivot_rows": {
+            "doc": '返回矩阵的枢轴行位置：行空间中一组线性无关的顶行所在行号的元组。\n\n返回:\ntuple[Integer, ...] -- 枢轴行行号元组\n\n示例::\n\n    sage: A = matrix(QQ, [[1, 2], [2, 4], [0, 1]])\n    sage: A.pivot_rows()\n    (0, 2)',
+            "return": 'tuple[Integer, ...]',
+        },
+        "Matrix.plot": {
+            "doc": "绘制矩阵的二维彩色图像（每个元素一个色块）并返回 Graphics 对象。\n\n参数:\n- ``*args, **kwds`` -- 透传给底层绘图函数的可选参数（plot 无额外文档化的参数）\n\n返回:\nAny -- Graphics 图像对象\n\n示例::\n\n    sage: M = matrix(RDF, [[1, 2], [3, 4]])\n    sage: p = M.plot()\n    sage: type(p)\n    <class 'sage.plot.graphics.Graphics'>\n    sage: p\n    Graphics object consisting of 1 graphics primitive",
+        },
         "Matrix.principal_square_root": {
             "doc": '返回正定矩阵的主平方根 M（唯一正定且满足 M^2 = A）。\n\n参数:\n- ``check_positivity`` -- 是否先验证正定性（bool，默认 True）\n\n返回:\nMatrix -- 主平方根矩阵（平方根符号化表示）；check_positivity=True 且矩阵不正定时返回 False。\n\n示例::\n\n    sage: matrix(QQ, [[2,1],[1,2]]).principal_square_root()\n    [1/2*sqrt(3) + 1/2 1/2*sqrt(3) - 1/2]\n    [1/2*sqrt(3) - 1/2 1/2*sqrt(3) + 1/2]',
         },
+        "Matrix.prod_of_row_sums": {
+            "doc": '计算 self 的一个子矩阵（取给定列集 cols）的各行行和之乘积。\n\n参数:\n- ``cols`` -- 选取的列索引列表（list of int）\n\n返回:\nInteger -- 所选列集子矩阵各行行和的乘积\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2], [3, 4]])\n    sage: A.prod_of_row_sums([0, 1])\n    21',
+            "return": 'Integer',
+        },
+        "Matrix.pseudoinverse": {
+            "doc": '返回矩阵的 Moore-Penrose 伪逆（适用于 RDF/CDF 上的矩阵）。\n\n参数:\n- ``algorithm`` -- 算法（str，仅限关键字传入，默认 None 自动选择；可选 "numpy"、"exact"、"exactconj"）\n\n返回:\nMatrix -- Moore-Penrose 伪逆\n\n示例::\n\n    sage: A = matrix(RDF, [[1, 2], [3, 4], [5, 6]])\n    sage: A.pseudoinverse()\n    [ -1.3333333333333337 -0.33333333333333287   0.6666666666666665]\n    [  1.0833333333333335   0.3333333333333329  -0.4166666666666665]',
+            "return": 'Matrix',
+        },
+        "Matrix.quantum_determinant": {
+            "doc": '返回矩阵的量子行列式 det_q(M) = sum_{sigma in S_n} (-q)^{l(sigma)} * prod M_{sigma(i),i}，其中 l(sigma) 为 sigma 的逆序数。\n\n参数:\n- ``q`` -- 参数 q（环元素或符号表达式，默认 None 时为基环上的多项式未定元）\n\n返回:\nAny -- 量子行列式（含参数 q 的表达式）\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2], [3, 4]])\n    sage: q = var("q")\n    sage: A.quantum_determinant(q)\n    -6*q + 4',
+        },
+        "Matrix.randomize": {
+            "doc": '随机替换矩阵中一定比例的条目为基环随机元素，其余条目保持不变（就地修改）。\n\n参数:\n- ``density`` -- 被替换条目所占比例的上界（float，默认 1，即全部替换）\n- ``nonzero`` -- 是否只填入非零随机元素（bool，默认 False）\n- ``*args, **kwds`` -- 透传给基环 ``random_element`` 的额外参数\n\n返回:\nNone -- 就地修改矩阵\n\n示例::\n\n    sage: set_random_seed(0)\n    sage: R = matrix(ZZ, 3, 3)\n    sage: R.randomize()\n    sage: R\n    [ -8   2   0]\n    [  0   1  -1]\n    [  2   1 -95]\n    sage: S = matrix(ZZ, 3, 3)\n    sage: S.randomize(density=0.5)\n    sage: S\n    [ 0  0 -2]\n    [ 0  0  0]\n    [ 0  0  1]\n    sage: T = matrix(ZZ, 2, 2)\n    sage: T.randomize(nonzero=True)\n    sage: T\n    [-1  1]\n    [-1 -2]',
+            "return": 'None',
+        },
         "Matrix.rational_form": {
             "doc": "返回矩阵的有理标准形（Frobenius 形，对角块为友矩阵）。\n\n参数:\n- ``format`` -- 输出格式（str，'right'（默认）/ 'left'）\n- ``subdivide`` -- 是否按不变因子分块显示（bool，默认 True）\n\n返回:\nMatrix -- 有理标准形矩阵。\n\n示例::\n\n    sage: matrix(QQ, [[2,1,0],[0,2,0],[0,0,3]]).rational_form()\n    [  0   0  12]\n    [  1   0 -16]\n    [  0   1   7]",
+        },
+        "Matrix.restrict": {
+            "doc": '返回 self 在不变子空间 V 的指定基上的作用矩阵（维数与 dim(V) 相同的方阵；V 为整个空间时原样返回 self）。\n\n参数:\n- ``V`` -- 向量子空间（VectorSpace，须在 self 作用下不变）\n- ``check`` -- 是否检查 V 的不变性（bool，默认 True）\n\n返回:\nMatrix -- V 的基上 self 作用的矩阵表示（n x n，n = dim V）\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 2], [0, 3]])\n    sage: V = VectorSpace(GF(7), 2).span([[0, 1]])\n    sage: A.restrict(V)\n    [3]',
+            "return": 'Matrix',
+        },
+        "Matrix.restrict_codomain": {
+            "doc": '设 self 定义了一个映到含 V 的陪域的线性映射且 self 的像包含于 V，返回表示该映射到 V 的矩阵（x 在 V 的基下的坐标即为 xA）。\n\n参数:\n- ``V`` -- 向量空间（VectorSpace，度为 self.ncols()，且包含 self 的像）\n\n返回:\nMatrix -- 表示 self 到 V 的线性映射的矩阵（各列为像在 V 的基下的坐标）\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 0], [0, 0]])\n    sage: V = VectorSpace(GF(7), 2).span([[1, 0]])\n    sage: A.restrict_codomain(V)\n    [1]\n    [0]',
+            "return": 'Matrix',
+        },
+        "Matrix.restrict_domain": {
+            "doc": '返回把 self 限制到 V 上得到的矩阵（只改定义域为 V、不改陪域），矩阵的各行即 V 的基向量的像。\n\n参数:\n- ``V`` -- 向量子空间（VectorSpace，self 作用空间的子空间）\n\n返回:\nMatrix -- 行 = V 的基向量的像的矩阵\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 2], [0, 3]])\n    sage: V = VectorSpace(GF(7), 2).span([[0, 1]])\n    sage: A.restrict_domain(V)\n    [0 3]',
+            "return": 'Matrix',
         },
         "Matrix.right_kernel": {
             "doc": "计算矩阵的右核：所有满足 A*x = 0 的列向量 x 构成的向量空间/自由模。核的维数 = 列数 - 秩，即齐次线性方程组的解空间。\n\n参数:\n- ``algorithm`` -- 算法关键字（默认 'default'，可选 'generic'、'flint'、'linbox' 等）\n\n返回:\nFreeModule -- 解空间（GF(p) 上为向量空间 VectorSpace，ZZ 上为自由模 Free module）；可用 .dimension() 取维数、.basis() 取基向量列表、.basis_matrix() 取基矩阵\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2,3],[2,4,6]])\n    sage: A.right_kernel()\n    Vector space of degree 3 and dimension 2 over Finite Field of size 7\n    Basis matrix:\n    [1 0 2]\n    [0 1 4]\n    sage: A.right_kernel().dimension()\n    2",
@@ -600,6 +945,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "Matrix.rook_vector": {
+            "doc": '返回矩阵的车向量 [r_0, r_1, ..., r_h]（h = min(m, n)），其中 r_k 为 k 阶积和式小量：对 (0,1)-矩阵而言即在一个棋盘上放置 k 个互不攻击的车的方法数。\n\n参数:\n- ``algorithm`` -- 算法（str，默认 None 自动选择，如 "Godsil" 等）\n- ``complement`` -- 是否返回补矩阵的车向量（bool，默认 False）\n- ``use_complement`` -- 是否使用补矩阵（bool，默认 None 自动决定）\n\n返回:\nlist[Integer] -- 车向量 [r_0, ..., r_h]\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 0], [0, 1]])\n    sage: A.rook_vector()\n    [1, 2, 1]',
+            "return": 'list[Integer]',
+        },
         "Matrix.row_module": {
             "doc": '返回行向量张成的模（行空间）。\n\n参数:\n- ``base_ring`` -- 基环（Ring，可选；缺省保持矩阵原基环）\n\n返回:\nModule -- 行空间（域上为向量空间，ZZ 上为自由模，带 echelon 基）。\n\n示例::\n\n    sage: matrix(ZZ, [[1,2],[3,4]]).row_module()\n    Free module of degree 2 and rank 2 over Integer Ring\n    Echelon basis matrix:\n    [1 0]\n    [0 2]',
         },
@@ -611,6 +960,15 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Matrix.rref": {
             "doc": '计算矩阵的行最简形（reduced row echelon form）：每个主元为 1 且是其所在列唯一的非零元。若矩阵定义在环（如 ZZ）上，会先在分式域上化简，因此返回矩阵的元素属于分式域（ZZ 矩阵返回 QQ 矩阵）。参数全部传给 echelon_form。\n\n参数:\n- 任意关键字参数，转交给 echelon_form\n\n返回:\nMatrix -- 行最简形矩阵\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.rref()\n    [1 0]\n    [0 1]\n    sage: matrix(GF(7), [[1,1],[2,2]]).rref()\n    [1 1]\n    [0 0]\n    sage: matrix(ZZ, [[2,4,6],[1,3,5]]).rref()   # ZZ 矩阵在 QQ 上化简\n    [ 1  0 -1]\n    [ 0  1  2]',
             "return": 'Matrix',
+        },
+        "Matrix.set_block": {
+            "doc": '把块矩阵写入 self 的 (row, col) 起始位置，就地修改矩阵。\n\n参数:\n- ``row`` -- 块放置的起始行（int）\n- ``col`` -- 块放置的起始列（int）\n- ``block`` -- 要写入的矩阵块（Matrix）\n\n返回:\nNone -- 就地修改\n\n示例::\n\n    sage: M = matrix(ZZ, [[1, 2, 3], [4, 5, 6], [7, 8, 9]])\n    sage: M.set_block(1, 1, matrix(ZZ, [[0, 0], [0, 0]]))\n    sage: M\n    [1 2 3]\n    [4 0 0]\n    [7 0 0]',
+            "return": 'None',
+        },
+        "Matrix.singular_values": {
+            "doc": '返回矩阵的奇异值序列（降序排列，基于数值计算，需要 RDF/CDF 等数值环上的矩阵）。\n\n返回:\nSequence -- 奇异值序列\n\n示例::\n\n    sage: A = matrix(RDF, [[1, 2], [3, 4], [5, 6]])\n    sage: A.singular_values()\n    [9.525518091565107, 0.5143005806586443]',
+            "return": 'Sequence',
+            "imports": ['from sage.structure.sequence import Sequence'],
         },
         "Matrix.smith_form": {
             "doc": '返回矩阵的 Smith 标准形 (D, U, V)：U、V 可逆且 U*A*V = D 为对角矩阵。\n\n参数:\n- ``transformation`` -- 是否返回变换矩阵 U、V（bool，默认 True）\n- ``integral`` -- U、V 的元素所在子环（Ring/bool/None，可选）\n- ``exact`` -- 是否使用精确算法（bool，默认 True）\n\n返回:\ntuple[Any, Any, Any] -- (D, U, V)，满足 U*A*V == D；transformation=False 时只返回 D。\n\n示例::\n\n    sage: matrix(ZZ, [[2,4],[6,8]]).smith_form()\n    ([2 0]\n    [0 4], [ 1  0]\n    [-1  1], [-1  2]\n    [ 1 -1])',
@@ -624,11 +982,45 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'FreeModuleElement | Matrix',
             "imports": ['from sage.modules.free_module_element import FreeModuleElement'],
         },
+        "Matrix.subdivide": {
+            "doc": '用水平分块线和垂直分块线把矩阵划分成分块（就地修改 self，返回 None）。\n\n参数:\n- ``row_lines`` -- 水平分块线所在的行下标列表（list[int] 或 None，默认 None 表示不分块）\n- ``col_lines`` -- 垂直分块线所在的列下标列表（list[int] 或 None，默认 None 表示不分块）\n\n返回:\nNone -- 就地修改矩阵；分块后矩阵的 repr 会显示分块线\n\n示例::\n\n    sage: S = matrix(QQ, 4, 4, range(16))\n    sage: S.subdivide([1, 2], [1, 3])\n    sage: S\n    [ 0| 1  2| 3]\n    [--+-----+--]\n    [ 4| 5  6| 7]\n    [--+-----+--]\n    [ 8| 9 10|11]\n    [12|13 14|15]',
+            "return": 'None',
+        },
+        "Matrix.subdivision": {
+            "doc": '返回矩阵按分块线划分后位置 (i, j) 处的行、列子块。\n\n参数:\n- ``i`` -- 子块的行下标（int）\n- ``j`` -- 子块的列下标（int）\n\n返回:\nAny -- 位置 (i, j) 处的子矩阵（Matrix）\n\n示例::\n\n    sage: S = matrix(QQ, 4, 4, range(16))\n    sage: S.subdivide([1, 2], [1, 3])\n    sage: S.subdivision(0, 0)\n    [0]\n    sage: S.subdivision(1, 1)\n    [5 6]',
+        },
+        "Matrix.subdivision_entry": {
+            "doc": '返回矩阵按分块线划分后，子块 (i, j) 内位置 (x, y) 处的元素。\n\n参数:\n- ``i`` -- 子块的行下标（int）\n- ``j`` -- 子块的列下标（int）\n- ``x`` -- 子块内的行下标（int）\n- ``y`` -- 子块内的列下标（int）\n\n返回:\nAny -- 指定子块内 (x, y) 处的元素\n\n示例::\n\n    sage: S = matrix(QQ, 4, 4, range(16))\n    sage: S.subdivide([1, 2], [1, 3])\n    sage: S.subdivision_entry(1, 1, 0, 0)\n    5',
+        },
+        "Matrix.subdivisions": {
+            "doc": '返回矩阵当前的行分块线与列分块线位置。\n\n返回:\ntuple[list[int], list[int]] -- 二元组 (行分块线列表, 列分块线列表)\n\n示例::\n\n    sage: S = matrix(QQ, 4, 4, range(16))\n    sage: S.subdivide([1, 2], [1, 3])\n    sage: S.subdivisions()\n    ([1, 2], [1, 3])',
+            "return": 'tuple[list[int], list[int]]',
+        },
+        "Matrix.subs": {
+            "doc": '对矩阵中每个条目进行变量代换，参数原样传给系数的 subs 方法。\n\n参数:\n- ``*args`` -- 位置参数，原样传给各系数的 subs 方法\n- ``**kwds`` -- 关键字参数，原样传给各系数的 subs 方法\n\n返回:\nMatrix -- 代换后得到的新矩阵\n\n示例::\n\n    sage: x = var("x")\n    sage: A = matrix(SR, [[x, 1], [2, x**2]])\n    sage: A.subs(x=3)\n    [3 1]\n    [2 9]',
+            "return": 'Matrix',
+        },
+        "Matrix.symplectic_form": {
+            "doc": '对域上反对称且交替（对角全零）的矩阵求辛形式：返回 (F, C) 使得 C 的行构成辛基且 F = C * self * C.transpose() 为块状标准辛矩阵。\n\n返回:\ntuple[Any, Any] -- 二元组 (F, C)：F 为标准辛矩阵，C 为行构成辛基的矩阵；矩阵不是域上的反对称交替矩阵时抛出 ValueError\n\n示例::\n\n    sage: E = matrix(QQ, [[0, 1, 0, 2], [-1, 0, 3, 0], [0, -3, 0, 1], [-2, 0, -1, 0]])\n    sage: E\n    [ 0  1  0  2]\n    [-1  0  3  0]\n    [ 0 -3  0  1]\n    [-2  0 -1  0]\n    sage: F, C = E.symplectic_form()\n    sage: F\n    [ 0  0  1  0]\n    [ 0  0  0  1]\n    [-1  0  0  0]\n    [ 0 -1  0  0]\n    sage: C\n    [  1   0   0   0]\n    [3/7   0 1/7   0]\n    [  0   1   0   0]\n    [  0  -2   0   1]\n    sage: F == C * E * C.transpose()\n    True',
+            "return": 'tuple[Any, Any]',
+        },
         "Matrix.tensor_product": {
             "doc": '返回与矩阵 A 的 Kronecker（张量）积。\n\n参数:\n- ``A`` -- 参与张量积的矩阵（Matrix）\n- ``subdivide`` -- 是否按 A 的尺寸对结果分块显示（bool，默认 True）\n\n返回:\nMatrix -- self 与 A 的 Kronecker 积。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[3,4]]).tensor_product(matrix(QQ, [[0,1],[1,0]]))\n    [0 1|0 2]\n    [1 0|2 0]\n    [---+---]\n    [0 3|0 4]\n    [3 0|4 0]',
         },
         "Matrix.trace": {
             "doc": '计算方阵的迹：主对角线元素之和。\n\n参数:\n无参数。\n\n返回:\n基环元素 -- 迹；ZZ 矩阵返回 Integer，GF(p) 矩阵返回 GF(p) 元素\n\n示例::\n\n    sage: A = matrix(GF(7), [[1,2],[3,4]])\n    sage: A.trace()\n    5\n    sage: matrix(ZZ, [[1,2],[3,4]]).trace()\n    5',
+        },
+        "Matrix.trace_of_product": {
+            "doc": '返回 self*other 的迹，不显式计算整个乘积。\n\n参数:\n- ``other`` -- 矩阵（Matrix，需满足尺寸相容：self 的列数等于 other 的行数且反之亦然）\n\n返回:\nAny -- tr(self * other)（基环元素）\n\n示例::\n\n    sage: A = matrix(ZZ, [[1, 2], [3, 4]])\n    sage: B = matrix(ZZ, [[2, 0], [1, 3]])\n    sage: A.trace_of_product(B)\n    16',
+        },
+        "Matrix.visualize_structure": {
+            "doc": "生成矩阵结构的可视化图像，非零元素以不同颜色显示、零元素为空白，便于观察稀疏结构。\n\n参数:\n- ``maxsize`` -- 输出图像的最大边长（int，默认 512）\n\n返回:\nAny -- sage.repl.image.Image 图像对象\n\n示例::\n\n    sage: V = matrix(ZZ, 2, 2); V[0,0] = 5; V[1,1] = -2\n    sage: type(V.visualize_structure())\n    <class 'sage.repl.image.Image'>",
+        },
+        "Matrix.wiedemann": {
+            "doc": '把 Wiedemann 算法应用于第 i 个标准基向量，返回对应的线性递推序列的最小多项式（Berlekamp-Massey 多项式之 lcm，为矩阵最小多项式的因式）。\n\n参数:\n- ``i`` -- 标准基向量的下标（Integer）\n- ``t`` -- 只使用前 t 条线性递推关系（Integer，默认 0 表示使用全部）\n\n返回:\nAny -- 线性递推序列的最小多项式（基环上的一元多项式）\n\n示例::\n\n    sage: A = matrix(GF(7), [[1, 0], [0, 2]])\n    sage: A.wiedemann(0)\n    x + 6',
+        },
+        "Matrix.zigzag_form": {
+            "doc": '返回与 self 相似的 ZigZag 形矩阵：主对角线为交替转置的友矩阵块，其余位置为零，是有理标准形的前奏。\n\n参数:\n- ``subdivide`` -- 是否按友矩阵块对结果分块（bool，默认 True）\n- ``transformation`` -- 若为 True，额外返回可逆矩阵 U 使得 U.inverse()*self*U 等于该形（bool，默认 False）\n\n返回:\nAny -- ZigZag 形矩阵（Matrix）；transformation=True 时返回 (ZigZag 形, 变换矩阵) 二元组\n\n示例::\n\n    sage: A = matrix(QQ, [[5, 4, 2, 1], [0, 1, -1, -1], [-1, -1, 3, 0], [1, 1, -1, 2]])\n    sage: A.zigzag_form()\n    [  0 -16|  0   0]\n    [  1   8|  0   0]\n    [-------+-------]\n    [  0   0|  0   1]\n    [  0   0| -2   3]',
         },
     },
     "sage.matrix.matrix_dense": {
@@ -684,6 +1076,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
     },
     "sage.modules.free_module_element": {
+        "FreeModuleElement.Mod": {
+            "doc": '返回该向量的每个分量对模数 ``p`` 取模后得到的向量。\n\n参数:\n- ``p`` -- 模数（Integer，基环的商环模数）\n\n返回:\nFreeModuleElement -- 分量逐项模 ``p`` 的向量，其父环为基环对 ``p`` 的商环\n\n示例::\n\n    sage: V = vector(ZZ, [5, 9, 13, 15])\n    sage: V.Mod(7)\n    (5, 2, 6, 1)\n    sage: parent(V.Mod(7))\n    Vector space of dimension 4 over Ring of integers modulo 7',
+            "return": 'FreeModuleElement',
+        },
         "FreeModuleElement.additive_order": {
             "doc": '返回向量在加法群中的阶,即满足 k*self == 0 的最小正整数 k(各分量加法阶的最小公倍数)。\n\n返回:\nInteger -- 向量的加法阶;某分量有无穷阶(如整数向量)时返回 +Infinity\n\n示例::\n\n    sage: vector(GF(7), [1, 2, 3]).additive_order()\n    7\n\n    sage: vector(ZZ, [1, 2, 3]).additive_order()\n    +Infinity\n\n    sage: x = GF(2)["x"].gen()\n    sage: F = GF(2^8, modulus=x^8 + x^4 + x^3 + x + 1, names=("a",))\n    sage: vector(F, [1, 2, 3]).additive_order()\n    2',
             "return": 'Integer',
@@ -697,6 +1093,14 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '把向量的每个分量换到新环上，返回新环上的向量。\n\n参数:\n- ``R`` -- 目标环（如 GF(7)）\n\n返回:\nFreeModuleElement -- 分量在指定环上的新向量\n\n示例::\n\n    sage: vector([1,2,3]).change_ring(GF(7))\n    (1, 2, 3)',
             "return": 'FreeModuleElement',
         },
+        "FreeModuleElement.column": {
+            "doc": '返回以该向量各分量为唯一一列的矩阵。\n\n返回:\nMatrix -- n x 1 矩阵，元素与向量分量顺序一致，基环与向量相同，稠密/稀疏结构被保留\n\n示例::\n\n    sage: vector(ZZ, [1, 2, 3]).column()\n    [1]\n    [2]\n    [3]',
+            "return": 'Matrix',
+        },
+        "FreeModuleElement.compositional_inverse": {
+            "doc": "求该可调用符号向量所表示函数的复合逆（compositional inverse）。\n\n参数:\n- ``allow_multivalued_inverse`` -- 是否允许多值逆（bool，默认 True）；为 False 且逆为多值时抛 ValueError\n- ``**kwargs`` -- 传递给符号求解 solve 的额外参数\n\n返回:\nFreeModuleElement -- 复合逆对应的可调用符号向量；基环不是可调用符号表达式环时抛 ValueError\n\n示例::\n\n    sage: x, y, z = var('x, y, z')\n    sage: f = vector([y, z, x]).function(x, y, z)\n    sage: f\n    (x, y, z) |--> (y, z, x)\n    sage: f.compositional_inverse()\n    (x, y, z) |--> (z, x, y)",
+            "return": 'FreeModuleElement',
+        },
         "FreeModuleElement.concatenate": {
             "doc": '把 self 与另一个向量或可迭代对象按顺序拼接,返回新向量。\n\n参数:\n- ``other`` -- 向量或任意可迭代对象,其元素须可与 self 的元素共用一个基环（FreeModuleElement | Iterable[Any]）\n- ``ring`` -- 关键字参数,强制结果向量的基环,可选;缺省时由 vector 构造器自动确定（Ring, 可选）\n\n返回:\nFreeModuleElement -- 拼接得到的向量,维数为两者维数之和\n\n示例::\n\n    sage: v = vector(ZZ, [1, 2, 3])\n    sage: w = vector(ZZ, [4, 5])\n    sage: v.concatenate(w)\n    (1, 2, 3, 4, 5)\n    sage: v.concatenate(w, ring=QQ)\n    (1, 2, 3, 4, 5)',
             "return": 'FreeModuleElement',
@@ -704,6 +1108,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "FreeModuleElement.conjugate": {
             "doc": '返回每个分量都取复共轭后的向量;对实数(如 ZZ)向量则为自身。\n\n返回:\nFreeModuleElement -- 与 self 等长、同基环的向量,各分量替换为其复共轭;稀疏向量保持稀疏\n\n示例::\n\n    sage: v = vector(CDF, [2.3 - 5.4*I, -1.7 + 3.6*I])\n    sage: v.conjugate()\n    (2.3 + 5.4*I, -1.7 - 3.6*I)',
             "return": 'FreeModuleElement',
+        },
+        "FreeModuleElement.coordinate_ring": {
+            "doc": '返回该向量分量所属的环（坐标环），与标量环 base_ring 不同。\n\n返回:\nRing -- 分量所属的坐标环\n\n示例::\n\n    sage: M = (ZZ^2) * (1/2)\n    sage: v = M([0, 1/2])\n    sage: v.base_ring()\n    Integer Ring\n    sage: v.coordinate_ring()\n    Rational Field',
+            "return": 'Ring',
         },
         "FreeModuleElement.cross_product": {
             "doc": '计算两个三维向量的叉积，结果与两个输入向量都正交。\n\n参数:\n- ``right`` -- 另一个三维向量（长度必须为 3）\n\n返回:\nFreeModuleElement -- 叉积向量 v x w，长度仍为 3\n\n示例::\n\n    sage: v = vector([1,2,3]); w = vector([4,5,6])\n    sage: v.cross_product(w)\n    (-3, 6, -3)',
@@ -734,11 +1142,22 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '对向量的每个分量关于给定变量求导。\n\n参数:\n- ``*args`` -- 求导变量及迭代次数,如 derivative(t)、derivative(t, t);至少须提供一个变量,否则抛出 ValueError: No differentiation variable specified.（Variable, 可选）\n\n返回:\nFreeModuleElement -- 逐分量求导后的向量\n\n示例::\n\n    sage: P.<t> = QQ[]\n    sage: v = vector(P, [t^2 + 1, t^3])\n    sage: v.derivative(t)\n    (2*t, 3*t^2)',
             "return": 'FreeModuleElement',
         },
+        "FreeModuleElement.dict": {
+            "doc": '返回该向量非零分量的字典表示。\n\n参数:\n- ``copy`` -- 是否复制内部字典（bool，默认 True）；为 False 时可能返回内部引用，修改会污染向量\n\n返回:\ndict[int, Any] -- 键为分量下标、值为对应非零分量的 Python 字典\n\n示例::\n\n    sage: vector([0, 0, 0, 0, 1/2, 0, 3/14]).dict()\n    {4: 1/2, 6: 3/14}',
+            "return": 'dict[int, Any]',
+        },
         "FreeModuleElement.div": {
             "doc": '返回向量场的散度:各分量对对应变量求偏导之和(注意:不是分量除法,而是向量微积分中的 divergence)。\n\n参数:\n- ``variables`` -- 求偏导所用的变量列表,长度须等于向量维数;缺省时按基环的变量序自动确定,若无法确定(如 Symbolic Ring)则须显式给出（list, 可选）\n\n返回:\nAny -- 散度,为基环元素(如多项式);变量数不等于维数时抛出 ValueError\n\n示例::\n\n    sage: R.<x,y,z> = QQ[]\n    sage: vector([x*y, y*z, z*x]).div()\n    x + y + z\n    sage: vector([x*y, y*z, z*x]).div([z, x, y])\n    0',
         },
         "FreeModuleElement.dot_product": {
             "doc": '计算两个同长向量的点积（内积）：对应分量乘积之和。\n\n参数:\n- ``right`` -- 右操作向量，长度必须与 self 相同\n\n返回:\n基环元素 -- 点积；ZZ 向量返回 Integer，GF(p) 向量返回 GF(p) 元素\n\n示例::\n\n    sage: v = vector([1,2,3]); w = vector([4,5,6])\n    sage: v.dot_product(w)\n    32',
+        },
+        "FreeModuleElement.element": {
+            "doc": '直接返回该向量自身，用于与其他对象的 element() 接口保持一致（许多对象的 element() 会返回其对应的向量）。\n\n返回:\nFreeModuleElement -- 向量自身\n\n示例::\n\n    sage: v = vector([1/2, 2/5, 0]); v\n    (1/2, 2/5, 0)\n    sage: v.element()\n    (1/2, 2/5, 0)',
+            "return": 'FreeModuleElement',
+        },
+        "FreeModuleElement.get": {
+            "doc": '返回向量第 ``i`` 个分量，等价于 ``self[i]``。\n\n参数:\n- ``i`` -- 分量索引（int）\n\n返回:\nAny -- 第 ``i`` 个分量；索引越界时抛出 IndexError\n\n示例::\n\n    sage: vector(SR, [1/2, 2/5, 0]).get(0)\n    1/2',
         },
         "FreeModuleElement.hamming_weight": {
             "doc": '返回向量的汉明重量,即非零分量的个数。\n\n返回:\nint -- 非零分量的个数\n\n示例::\n\n    sage: vector(GF(2), [1, 0, 1, 1]).hamming_weight()\n    3\n\n    sage: x = GF(2)["x"].gen()\n    sage: F = GF(2^8, modulus=x^8 + x^4 + x^3 + x + 1, names=("a",))\n    sage: v = vector(F, [1, 2, 3]); v\n    (1, 0, 1)\n    sage: v.hamming_weight()\n    2',
@@ -753,6 +1172,18 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "FreeModuleElement.integral": {
             "doc": '对向量的每个分量逐分量积分(可带积分变量、上下限等,转发给全局 integral 函数)。\n\n参数:\n- ``*args`` -- 积分变量及上下限等参数（Any, 可选）\n- ``**kwds`` -- 其他关键字参数（Any, 可选）\n\n返回:\nFreeModuleElement -- 逐分量积分后的向量\n\n示例::\n\n    sage: P.<t> = QQ[]\n    sage: v = vector(P, [t^2 + 1, t^3])\n    sage: v.integral()\n    (1/3*t^3 + t, 1/4*t^4)',
             "return": 'FreeModuleElement',
+        },
+        "FreeModuleElement.is_dense": {
+            "doc": '判断该向量是否为稠密向量（仅指数据结构，与分量是否为零无关）。\n\n返回:\nbool -- 稠密存储时返回 True，稀疏存储时返回 False\n\n示例::\n\n    sage: vector([1/2, 2/5, 0]).is_dense()\n    True\n    sage: vector([1/2, 2/5, 0], sparse=True).is_dense()\n    False',
+            "return": 'bool',
+        },
+        "FreeModuleElement.is_sparse": {
+            "doc": '判断该向量是否为稀疏向量（仅指数据结构，与分量是否为零无关）。\n\n返回:\nbool -- 稀疏存储时返回 True，稠密存储时返回 False\n\n示例::\n\n    sage: vector([1/2, 2/5, 0]).is_sparse()\n    False\n    sage: vector([1/2, 2/5, 0], sparse=True).is_sparse()\n    True',
+            "return": 'bool',
+        },
+        "FreeModuleElement.is_vector": {
+            "doc": '恒返回 True，因为该对象本身即为向量。\n\n返回:\nbool -- 恒为 True\n\n示例::\n\n    sage: vector([1/2, 2/5, 0]).is_vector()\n    True',
+            "return": 'bool',
         },
         "FreeModuleElement.items": {
             "doc": '返回 (下标, 系数) 对的迭代器,只产出非零分量。\n\n返回:\nIterator[tuple[int, Any]] -- 依次产出 (i, self[i]) 的生成器,其中 self[i] != 0;对稠密向量同样只含非零项\n\n示例::\n\n    sage: v = vector(ZZ, [1, 0, 5])\n    sage: list(v.items())\n    [(0, 1), (2, 5)]',
@@ -775,9 +1206,17 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '按给定的位置列表依次取出分量,返回这些分量组成的列表。\n\n参数:\n- ``positions`` -- 整数组成的可迭代对象（Iterable[int]）\n\n返回:\nlist[Any] -- 按 positions 顺序取出的分量列表;某位置越界时抛出 IndexError\n\n示例::\n\n    sage: v = vector(GF(7), [1, 2, 3])\n    sage: v.list_from_positions([0, 2])\n    [1, 3]\n    sage: v.list_from_positions([2, 0, 1])\n    [3, 1, 2]',
             "return": 'list[Any]',
         },
+        "FreeModuleElement.monic": {
+            "doc": '返回该向量除以第一个非零分量后得到的向量。\n\n返回:\nFreeModuleElement -- 第一个非零分量化为 1 的向量；零向量（含空向量）原样返回\n\n示例::\n\n    sage: v = vector(QQ, [0, 4/3, 5, 1, 2])\n    sage: v.monic()\n    (0, 1, 15/4, 3/4, 3/2)\n    sage: vector(GF(7), [0, 2, 3]).monic()\n    (0, 1, 5)',
+            "return": 'FreeModuleElement',
+        },
         "FreeModuleElement.monomial_coefficients": {
             "doc": '返回以基元素下标为键、对应系数为值的字典,只包含非零分量。\n\n参数:\n- ``copy`` -- 布尔值(默认 True);若向量内部用字典表示,是否返回该字典的副本;设为 False 时修改返回的字典会直接改变向量本身（bool）\n\n返回:\ndict[int, Any] -- 非零分量构成的字典 {下标: 系数}\n\n示例::\n\n    sage: vector(ZZ, [1, 0, 5]).monomial_coefficients()\n    {0: 1, 2: 5}',
             "return": 'dict[int, Any]',
+        },
+        "FreeModuleElement.nintegral": {
+            "doc": "对向量逐分量进行数值积分（numeric integral），并返回各分量 nintegral 的完整结果。\n\n参数:\n- ``*args`` -- 传给每个分量 nintegral 的参数，如积分变量与积分上下限\n- ``**kwds`` -- 传给每个分量 nintegral 的关键字参数\n\n返回:\ntuple[FreeModuleElement, Any] -- (向量, 各分量 nintegral 的返回值)；第一个元素为各分量积分值组成的向量，第二个元素为 (数值, 误差界, 点数, 错误码) 元组的列表（稠密向量）或字典（稀疏向量）\n\n示例::\n\n    sage: t = var('t')\n    sage: r = vector([t, t^2, sin(t)])\n    sage: vec, answers = r.nintegral(t, 0, 1)\n    sage: vec\n    (0.5, 0.33333333333333337, 0.45969769413186023)\n    sage: answers\n    [(0.5, 5.551115123125784e-15, 21, 0), (0.33333333333333337, 3.70074341541719e-15, 21, 0), (0.45969769413186023, 5.103669643922841e-15, 21, 0)]",
+            "return": 'tuple[FreeModuleElement, Any]',
         },
         "FreeModuleElement.nonzero_positions": {
             "doc": '返回所有非零分量所在位置的排序列表。\n\n返回:\nlist[int] -- 满足 self[i] != 0 的下标 i 的升序列表\n\n示例::\n\n    sage: vector([-1, 0, 3, 0, 0, 0, 1/100]).nonzero_positions()\n    [0, 2, 6]',
@@ -794,6 +1233,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回对每个分量做数值近似后得到的向量。\n\n参数:\n- ``prec`` -- 二进制精度位数（int, 可选）\n- ``digits`` -- 十进制精度位数,仅在 prec 未给出时生效（int, 可选）\n- ``algorithm`` -- 计算分量近似值所用的算法,可接受值取决于分量类型（Any, 可选）\n\n返回:\nFreeModuleElement -- 各分量数值近似后的向量;prec 与 digits 均缺省时默认 53 位二进制精度(约 16 位十进制)\n\n示例::\n\n    sage: v = vector(QQ, [1/2, 1/3, 1/4])\n    sage: v.numerical_approx()\n    (0.500000000000000, 0.333333333333333, 0.250000000000000)\n    sage: v.numerical_approx(digits=3)\n    (0.500, 0.333, 0.250)',
             "return": 'FreeModuleElement',
         },
+        "FreeModuleElement.numpy": {
+            "doc": '将向量转换为 numpy 数组。\n\n参数:\n- ``dtype`` -- 返回数组的 numpy dtype（Any，默认 object）；传 None 时由 numpy 自动选择原生类型\n\n返回:\nnumpy.ndarray -- 与向量等长、逐分量对应的 numpy 数组\n\n示例::\n\n    sage: vector([1, 2, 3]).numpy()\n    array([1, 2, 3], dtype=object)\n    sage: vector(QQ, [1, 2, 5/6]).numpy(dtype=float)\n    array([1.        , 2.        , 0.83333333])',
+            "return": 'numpy.ndarray',
+        },
         "FreeModuleElement.outer_product": {
             "doc": '返回两个向量的外积矩阵(把 self 视为 m 维列向量、right 视为 n 维行向量后相乘得到的 m 行 n 列矩阵)。\n\n参数:\n- ``right`` -- 任意长度的向量(或自由模元素),其元素可与 self 的元素相乘（FreeModuleElement）\n\n返回:\nMatrix -- m×n 矩阵,第 i 行第 j 列为 self[i]*right[j];right 不是向量时抛出 TypeError\n\n示例::\n\n    sage: vector(ZZ, [1, 2, 3]).outer_product(vector(ZZ, [2, 3]))\n    [2 3]\n    [4 6]\n    [6 9]',
             "return": 'Matrix',
@@ -803,8 +1246,27 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回 self 与 right 对应分量两两相乘得到的向量(逐分量乘积)。\n\n参数:\n- ``right`` -- 与 self 同维数的向量,其系数可与 self 的系数相乘;不必与 self 属于同一向量空间（FreeModuleElement）\n\n返回:\nFreeModuleElement -- 第 i 个分量为 self[i]*right[i] 的向量,基环为能容纳全部乘积的最小环\n\n示例::\n\n    sage: vector(ZZ, [1, 2, 3]).pairwise_product(vector(ZZ, [4, 5, 6]))\n    (4, 10, 18)\n\n    sage: vector(GF(7), [1, 2, 3]).pairwise_product(vector(GF(7), [4, 5, 6]))\n    (4, 3, 4)',
             "return": 'FreeModuleElement',
         },
+        "FreeModuleElement.plot": {
+            "doc": "绘制该向量的图形，默认绘制从起点指向向量端点的箭头。\n\n参数:\n- ``plot_type`` -- 绘图类型（str，可选）：'arrow'（默认，维度不超过 3 时）、'point' 或 'step'；维度超过 3 时默认 'step'\n- ``start`` -- 箭头起点（tuple/list/vector，可选，默认原点）\n- ``**kwds`` -- 传递给底层绘图函数的额外参数\n\n返回:\nAny -- 2 维时为 Graphics 对象，3 维时为 Graphics3d 对象；'arrow' 与 'point' 在维度超过 3 时抛 ValueError\n\n示例::\n\n    sage: v = vector(RDF, (1, 2))\n    sage: v.plot()\n    Graphics object consisting of 1 graphics primitive\n    sage: v.plot(plot_type='point', color='green', size=20)\n    Graphics object consisting of 1 graphics primitive\n    sage: vector(RDF, (1, 2, 1)).plot()\n    Graphics3d Object",
+        },
+        "FreeModuleElement.plot_step": {
+            "doc": '将该向量的分量视为定义在等距采样点上的函数，绘制阶梯形步进图。\n\n参数:\n- ``xmin`` -- x 轴起点（int，默认 0）\n- ``xmax`` -- x 轴终点（int，默认 1）\n- ``eps`` -- 相邻采样点间距（float，可选，默认由 (xmax - xmin)/res 决定）\n- ``res`` -- 采样点总数（int，可选，默认等于向量长度）\n- ``connect`` -- 是否用线段连接各点（bool，默认 True）；False 时绘制点集\n- ``**kwds`` -- 传递给底层绘图函数的额外参数\n\n返回:\nGraphics -- 阶梯函数图形对象\n\n示例::\n\n    sage: v = vector(RDF, [1, 2, 3, 4])\n    sage: v.plot_step()\n    Graphics object consisting of 1 graphics primitive',
+            "return": 'Graphics',
+        },
+        "FreeModuleElement.row": {
+            "doc": '返回以该向量各分量为唯一一行的矩阵。\n\n返回:\nMatrix -- 1 x n 矩阵，元素与向量分量顺序一致，基环与向量相同，稠密/稀疏结构被保留\n\n示例::\n\n    sage: vector(ZZ, [1, 2, 3]).row()\n    [1 2 3]',
+            "return": 'Matrix',
+        },
+        "FreeModuleElement.set": {
+            "doc": '将向量第 ``i`` 个分量设置为 ``value``，等价于 ``self[i] = value``，原地修改。\n\n参数:\n- ``i`` -- 分量索引（int）\n- ``value`` -- 要设置的新值（Any，会被转换为向量分量环的元素）\n\n返回:\nNone -- 无返回值，直接修改自身；索引越界时抛出 IndexError\n\n示例::\n\n    sage: v = vector(SR, [1/2, 2/5, 0]); v\n    (1/2, 2/5, 0)\n    sage: v.set(2, pi)\n    sage: v\n    (1/2, 2/5, pi)',
+            "return": 'None',
+        },
         "FreeModuleElement.sparse_vector": {
             "doc": '返回 self 的稀疏表示;若 self 已是稀疏向量则原样返回 self。\n\n返回:\nFreeModuleElement -- 稀疏向量\n\n示例::\n\n    sage: v = vector(ZZ, [1, 2, 3])\n    sage: v.sparse_vector()\n    (1, 2, 3)\n    sage: v.sparse_vector().is_sparse()\n    True',
+            "return": 'FreeModuleElement',
+        },
+        "FreeModuleElement.subs": {
+            "doc": "对向量的每个分量进行符号代换，返回新向量。\n\n参数:\n- ``in_dict`` -- 代换字典（dict，可选）\n- ``**kwds`` -- 关键字形式的代换，如 subs(a=b)（可选）\n\n返回:\nFreeModuleElement -- 每个分量都执行代换后的新向量\n\n示例::\n\n    sage: a, b, d, e = var('a, b, d, e')\n    sage: v = vector([a, b, d, e])\n    sage: v.subs(a=b, b=d)\n    (b, d, d, e)",
             "return": 'FreeModuleElement',
         },
         "FreeModuleElement.support": {
@@ -1641,8 +2103,27 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.__getitem__": {
             "doc": '按下标取系数：f[n] 返回 x^n 的系数（常数项为 f[0]）。也支持切片（f[a:b] 返回截断的多项式）。\n\n参数:\n- ``n`` -- 次数下标（int）；越界时返回基环的 0\n\n返回:\n基环元素 -- x^n 的系数；n 超过次数时返回 0\n\n示例::\n\n    sage: R.<x> = ZZ[]\n    sage: f = 3*x^4 + 2*x^2 + 1\n    sage: f[2]\n    2\n    sage: f[0]\n    1\n    sage: f[1]\n    0',
         },
+        "Polynomial.adams_operator_on_roots": {
+            "doc": '返回根为原多项式各根 n 次幂的多项式（根上的 Adams 算子）。\n\n参数:\n- ``n`` -- 幂指数（正整数）\n- ``monic`` -- 是否返回首一多项式（bool，默认 ``False``）\n\n返回:\nPolynomial -- 根为原根 n 次幂的多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).adams_operator_on_roots(3)\n    x^2 + 1',
+            "return": 'Polynomial',
+        },
         "Polynomial.add_bigoh": {
             "doc": "返回该多项式加上 O(x^prec) 后截断到精度 prec 的幂级数。\n\n参数:\n- ``prec`` -- 精度，即保留低于 prec 次的项（int）\n\n返回:\nAny -- 幂级数环中的元素（父环为对应生成元的幂级数环），如 1 + x + O(x^2)\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^3 + 2*x^2 + x + 1).add_bigoh(2)\n    1 + x + O(x^2)\n    sage: (1 + x).add_bigoh(5)\n    1 + x + O(x^5)",
+        },
+        "Polynomial.all_roots_in_interval": {
+            "doc": '判断多项式的所有根是否全部为实数且都落在给定区间内。\n\n参数:\n- ``a`` -- 区间左端点（数值，默认 ``None`` 表示负无穷）\n- ``b`` -- 区间右端点（数值，默认 ``None`` 表示正无穷）\n\n返回:\nbool -- 全部根为实数且都在区间内时返回 ``True``\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = (x - 1)*(x - 2)\n    sage: f.all_roots_in_interval(0, 3)\n    True\n    sage: f.all_roots_in_interval(0, 3/2)\n    False',
+            "return": 'bool',
+        },
+        "Polynomial.any_irreducible_factor": {
+            "doc": '返回该多项式的一个不可约因子。\n\n参数:\n- ``degree`` -- 要求的不可约因子的次数（正整数或 ``None``，默认 ``None`` 时返回最先找到的因子，通常次数最小）\n- ``assume_squarefree`` -- 假设多项式无平方因子以加速（bool，默认 ``False``，仅有限域有效）\n- ``assume_equal_deg`` -- 假设所有不可约因子次数都等于 ``degree``（bool，默认 ``False``，仅有限域有效）\n- ``ext_degree`` -- 只返回次数整除 ``ext_degree`` 的不可约因子（正整数或 ``None``，仅有限域有效）\n\n返回:\nPolynomial -- 该多项式的一个不可约因子\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = (x^2 + 1)*(x - 2)\n    sage: f.any_irreducible_factor()\n    x - 2',
+            "return": 'Polynomial',
+        },
+        "Polynomial.any_root": {
+            "doc": '返回多项式在给定环中的一个根，默认在系数环中求根。\n\n参数:\n- ``ring`` -- 在其中求根的环（环，默认 ``None`` 时取系数环）\n- ``degree`` -- 有限域上指定根的扩张次数（整数或 ``None``，默认 ``None`` 时取最小次数）\n- ``assume_squarefree`` -- 假设多项式无平方因子以加速（bool，默认 ``False``，仅有限域有效）\n- ``assume_equal_deg`` -- 假设所有不可约因子次数相等以加速（bool，默认 ``False``，仅有限域有效）\n\n返回:\nAny -- 给定环中的一个根；若环中不存在根则抛出 ``ValueError``\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 - 4).any_root()\n    2\n    sage: (x^3 - 2).any_root()\n    Traceback (most recent call last):\n    ...\n    ValueError: polynomial x^3 - 2 has no roots',
+        },
+        "Polynomial.args": {
+            "doc": '返回调用该多项式时使用的（唯一）参数，即该多项式环的生成元构成的元组；常数多项式同样接受单个参数。\n\n参数:\n无参数。\n\n返回:\ntuple[Any, ...] -- 含环生成元的单元素元组\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).args()\n    (x,)',
+            "return": 'tuple[Any, ...]',
         },
         "Polynomial.base_extend": {
             "doc": "将系数环自然扩展为 R 后返回对应多项式。\n\n参数:\n- ``R`` -- 目标系数环（Ring）\n\n返回:\nPolynomial -- 系数属于 R 的同一多项式；基环到 R 无自然映射时抛 TypeError\n\n示例::\n\n    sage: R.<z> = ZZ['z']\n    sage: (z^2 + 1).base_extend(QQ)\n    z^2 + 1",
@@ -1651,12 +2132,36 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.base_ring": {
             "doc": "返回该多项式的系数环（基环）。\n\n返回:\nAny -- 多项式的基环，如有理数域、有限域等\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 1).base_ring()\n    Rational Field\n    sage: R.<x> = GF(2)['x']\n    sage: (x + 1).base_ring()\n    Finite Field of size 2",
         },
+        "Polynomial.canonical_associate": {
+            "doc": '返回该多项式的规范相伴元及其单位因子构成的二元组 (g, u)，满足 self == u * g。\n\n参数:\n无参数。\n\n返回:\ntuple[Any, ...] -- (规范相伴多项式, 单位因子)，二者乘积还原原多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 2*x^2 + 2*x\n    sage: f.canonical_associate()\n    (x^2 + x, 2)\n    sage: f == 2*(x^2 + x)\n    True',
+            "return": 'tuple[Any, ...]',
+        },
         "Polynomial.change_ring": {
             "doc": '把多项式的系数换成新环 R 中的元素（尽量转换），返回新环上的多项式。常用于把有理系数多项式模到有限域上（CTF 里把整数多项式转 GF(p) 求根/分解）。\n\n参数:\n- ``R`` -- 目标环或环同态（ring / morphism）\n\n返回:\n多项式 -- 系数在 R 中、变量名不变的多项式\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: (x^2 + 1).change_ring(GF(7))\n    x^2 + 1\n    sage: (x^2 + 1).change_ring(GF(7)).parent()\n    Univariate Polynomial Ring in x over Finite Field of size 7',
+        },
+        "Polynomial.change_variable_name": {
+            "doc": '返回一个同一基环上但换用新变量名的多项式。\n\n参数:\n- ``var`` -- 新变量名（字符串）\n\n返回:\nPolynomial -- 变量名改为 ``var`` 的新多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).change_variable_name("y")\n    y^2 + 1',
+            "return": 'Polynomial',
         },
         "Polynomial.coefficients": {
             "doc": '返回多项式的系数列表，按次数从低到高排列。\n\n参数:\n- ``sparse`` -- 默认 True：只返回非零系数；False 时与 self.list() 相同，含中间零系数（bool）\n\n返回:\n列表 -- 按次数升序的系数列表；sparse=True 只含非零系数，sparse=False 含全部位置（长度 = degree+1）\n\n示例::\n\n    sage: R.<x> = ZZ[]\n    sage: f = 3*x^4 + 2*x^2 + 1\n    sage: f.coefficients()\n    [1, 2, 3]\n    sage: f.coefficients(sparse=False)\n    [1, 0, 2, 0, 3]',
             "return": 'list[Any]',
+        },
+        "Polynomial.complex_roots": {
+            "doc": '返回多项式的全部复根，不计重数。\n\n参数:\n无参数。\n\n返回:\nlist[Any] -- 复根列表，元素为 CIF（复区间域）中的元素\n\n示例::\n\n    sage: f = x^3 - 2\n    sage: f.complex_roots()\n    [1.25992104989487, -0.629960524947437 - 1.09112363597172*I, -0.629960524947437 + 1.09112363597172*I]',
+            "return": 'list[Any]',
+        },
+        "Polynomial.compose_power": {
+            "doc": '返回该多项式与其自身的 k 次复合乘积（composed product）迭代。\n\n参数:\n- ``k`` -- 迭代次数（整数）\n- ``algorithm`` -- 算法选择（"resultant" 或 "BFSS"，默认 ``None`` 时自动选择）\n- ``monic`` -- 是否返回首一多项式（bool，默认 ``False``）\n\n返回:\nPolynomial -- k 次复合乘积迭代的结果\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).compose_power(3)\n    x^8 + 4*x^6 + 6*x^4 + 4*x^2 + 1',
+            "return": 'Polynomial',
+        },
+        "Polynomial.compose_trunc": {
+            "doc": '计算复合多项式 self∘other 并截断到 O(x^n)（只保留次数小于 n 的项）。\n\n参数:\n- ``other`` -- 被代入的多项式（同一环中的多项式）\n- ``n`` -- 截断次数（整数）\n\n返回:\nPolynomial -- self(other) 按精度 n 截断后的多项式；该方法仅对部分系数环实现（如实/复 ball 环 RBF、CBF），其余环（如 QQ、ZZ、GF(2)）抛出 ``NotImplementedError``\n\n示例::\n\n    sage: R = CBF["x"]\n    sage: f = R.gen()^2 + 1\n    sage: f.compose_trunc(R.gen() + 1, 4)\n    x^2 + 2.000000000000000*x + 2.000000000000000',
+            "return": 'Polynomial',
+        },
+        "Polynomial.composed_op": {
+            "doc": '返回两多项式的复合和、复合差、复合积或复合商（即对根施加相应运算后得到的多项式）。\n\n参数:\n- ``p2`` -- 同一多项式环中的另一个多项式\n- ``op`` -- 运算，必须是 operator 模块中的 add、sub、mul 或 truediv（传字符串会抛出 ``ValueError``）\n- ``algorithm`` -- 算法选择（"resultant" 或 "BFSS"，默认 ``None`` 时自动选择）\n- ``monic`` -- 是否返回首一多项式（bool，默认 ``False``）\n\n返回:\nPolynomial -- 复合运算得到的多项式\n\n示例::\n\n    sage: import operator\n    sage: R.<x> = QQ["x"]\n    sage: f = x^2 + 1\n    sage: g = x + 1\n    sage: f.composed_op(g, operator.mul)\n    x^2 + 1\n    sage: f.composed_op(g, operator.add)\n    x^2 + 2*x + 2',
+            "return": 'Polynomial',
         },
         "Polynomial.constant_coefficient": {
             "doc": '返回多项式的常数项（x^0 的系数）。\n\n返回:\n基环元素 -- 常数项系数\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: f = (-2/5)*x^3 + 2*x - 1/3\n    sage: f.constant_coefficient()\n    -1/3',
@@ -1664,15 +2169,31 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.content_ideal": {
             "doc": "返回该多项式的内容理想：由多项式全部系数生成的基环理想。\n\n返回:\nAny -- 基环中的理想对象；基环为 GCD 环时其生成元即内容\n\n示例::\n\n    sage: R.<z> = ZZ['z']\n    sage: (2*z + 2).content_ideal()\n    Principal ideal (2) of Integer Ring\n    sage: R.<x> = QQ['x']\n    sage: (2*x + 2).content_ideal()\n    Principal ideal (1) of Rational Field",
         },
+        "Polynomial.cyclotomic_part": {
+            "doc": '返回该多项式中所有分圆不可约因子（含重数）的乘积。\n\n参数:\n无参数。\n\n返回:\nPolynomial -- 分圆部分；无分圆因子时返回 1\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = (x^2 - x + 1)^2 * (x - 1)\n    sage: f.cyclotomic_part()\n    x^5 - 3*x^4 + 5*x^3 - 5*x^2 + 3*x - 1',
+            "return": 'Polynomial',
+        },
         "Polynomial.degree": {
             "doc": '返回多项式的次数（最高次非零项的次数）；零多项式的次数定义为 -1。\n\n返回:\nInteger -- 多项式的次数；零多项式返回 -1\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: (x^93 + 2*x + 1).degree()\n    93\n    sage: (0*x).degree()\n    -1\n    sage: (x + 33).degree()\n    1',
             "return": 'Integer',
+        },
+        "Polynomial.denominator": {
+            "doc": '返回多项式的一个分母，即所有系数分母的最小公倍数。\n\n参数:\n无参数。\n\n返回:\nPolynomial -- 分母多项式（基环元素）；整数环上恒为 1\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 1/2*x^2 + 3/4\n    sage: f.denominator()\n    4',
+            "return": 'Polynomial',
         },
         "Polynomial.derivative": {
             "doc": '求多项式的形式导数。可指定求导变量与求导次数（如 derivative(x, 2) 表示对 x 求二阶导）；别名 diff、differentiate。\n\n参数:\n- ``*args`` -- 可选的变量与次数参数：不带参数对主变量求一阶导；derivative(x, x) 或 derivative(x, 2) 求二阶导\n\n返回:\n多项式 -- 求导后的多项式\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: f = -x^4 + x^2/2 - x\n    sage: f.derivative()\n    -4*x^3 + x - 1\n    sage: f.derivative(x, 2)\n    -12*x^2 + 1',
         },
         "Polynomial.discriminant": {
             "doc": '计算多项式的判别式（discriminant）：判别式为 0 当且仅当多项式有重根。\n\n返回:\n基环元素 -- 判别式，属于多项式环的基环\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: f = x^3 + x + 1\n    sage: f.discriminant()\n    -31\n    sage: d = f.discriminant()\n    sage: d.parent() is QQ\n    True',
+        },
+        "Polynomial.dispersion": {
+            "doc": '返回两个多项式的分散度，即使得 f(x + n) 与 g(x) 有非常数公因子的最大非负整数 n。\n\n参数:\n- ``other`` -- 另一个多项式；缺省（``None``）时计算 ``self`` 与自身的自分散度\n\n返回:\nInteger -- 最大非负整数 n；不存在时返回 -1\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 3*x + 2\n    sage: g = x^2 - 1\n    sage: f.dispersion(g)\n    2\n    sage: f.dispersion()\n    3',
+            "return": 'Integer',
+        },
+        "Polynomial.dispersion_set": {
+            "doc": '返回两个多项式的分散集，即所有使得 f(x + n) 与 g(x) 有非常数公因子的非负整数 n 的集合。\n\n参数:\n- ``other`` -- 另一个多项式；缺省（``None``）时计算 ``self`` 与自身的自分散集\n\n返回:\nlist[Any] -- 满足条件的非负整数列表\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 3*x + 2\n    sage: g = x^2 - 1\n    sage: f.dispersion_set(g)\n    [0, 2]\n    sage: f.dispersion_set()\n    [0, 3]',
+            "return": 'list[Any]',
         },
         "Polynomial.divides": {
             "doc": "判断该多项式是否整除 p（仅对整环上的多项式实现）。\n\n参数:\n- ``p`` -- 被除多项式（Polynomial）\n\n返回:\nbool -- self 整除 p 时返回 True，否则返回 False；任意多项式整除 0\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x + 1).divides(x^2 + 2*x + 1)\n    True\n    sage: (x + 1).divides(x^2 + 1)\n    False\n    sage: R.<x> = GF(2)['x']\n    sage: (x + 1).divides(x^2 + 1)\n    True",
@@ -1695,9 +2216,16 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.gcd": {
             "doc": '返回 self 与 other 的最大公因式；基环为域时结果是首一多项式。\n\n参数:\n- ``other`` -- 与 self 同环的多项式（Polynomial）\n\n返回:\n多项式 -- self 和 other 的最大公因式（与 self 同环）；和 0 的 gcd 是该多项式本身\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: (2*x^2).gcd(2*x)\n    x\n    sage: (2*x).gcd(0)\n    x\n    sage: R.zero().gcd(0)\n    0',
         },
+        "Polynomial.global_height": {
+            "doc": '返回该多项式的（射影）全局高度，即各系数绝对对数高度的最大值。\n\n参数:\n- ``prec`` -- 浮点精度位数（整数，默认 ``None`` 时用默认实数域精度）\n\n返回:\nAny -- 实数，为系数的绝对对数高度最大值\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 2*x^3 + 3*x - 5\n    sage: f.global_height()\n    1.60943791243410',
+        },
         "Polynomial.gradient": {
             "doc": "返回该一元多项式对生成元的偏导数构成的单元素列表（与多元情况保持一致）。\n\n返回:\nlist[Any] -- 含一个元素的列表，元素为形式导数\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^3 + x + 1).gradient()\n    [3*x^2 + 1]\n    sage: R(1).gradient()\n    [0]",
             "return": 'list[Any]',
+        },
+        "Polynomial.has_cyclotomic_factor": {
+            "doc": '判断该多项式是否含有非平凡的分圆因子（算法假定系数为有理数）。\n\n参数:\n无参数。\n\n返回:\nbool -- 含有非平凡分圆因子时返回 ``True``\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = (x^2 - x + 1)^2 * (x - 1)\n    sage: f.has_cyclotomic_factor()\n    True\n    sage: (x^2 + 3).has_cyclotomic_factor()\n    False',
+            "return": 'bool',
         },
         "Polynomial.homogenize": {
             "doc": "返回该多项式的齐次化：各单项式乘以 var 的最小幂，使所有单项式具有相同的全次数。\n\n参数:\n- ``var`` -- 新变量的名字（str，默认 'h'）；若指定的是环内已有的生成元名，则返回该环中的齐次多项式\n\n返回:\nPolynomial -- 齐次多项式；若多项式本身已齐次则原样返回（不增加变量）\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 1).homogenize('y')\n    x^2 + y^2\n    sage: (x^3 + x + 1).homogenize('y')\n    x^3 + x*y^2 + y^3\n    sage: (2*x^2).homogenize('y')\n    2*x^2",
@@ -1726,6 +2254,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.is_cyclotomic": {
             "doc": "判断该多项式是否为分圆多项式（首一、不可约且所有根都是单位根）。\n\n参数:\n- ``certificate`` -- 为 True 时返回 n 使 self 是第 n 个分圆多项式（bool，默认 False，仅 'pari' 算法支持）\n- ``algorithm`` -- 算法：'pari'（默认）或 'sage'（str）\n\n返回:\nAny -- certificate=False 时返回 bool；certificate=True 时返回非负整数（0 表示不是分圆多项式）；非零特征基环上抛 NotImplementedError\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^4 + x^3 + x^2 + x + 1).is_cyclotomic()\n    True\n    sage: (x^2 + 1).is_cyclotomic(certificate=True)\n    4\n    sage: (x^2 + 2).is_cyclotomic()\n    False",
         },
+        "Polynomial.is_cyclotomic_product": {
+            "doc": '判断该多项式是否为一组分圆多项式的乘积。\n\n参数:\n无参数。\n\n返回:\nbool -- 是分圆多项式乘积时返回 ``True``\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 - x + 1).is_cyclotomic_product()\n    True\n    sage: (x^2 - x + 2).is_cyclotomic_product()\n    False',
+            "return": 'bool',
+        },
         "Polynomial.is_gen": {
             "doc": '判断该多项式是否就是所在环的生成元（不定元）本身。\n\n返回:\nbool -- 是生成元返回 True，否则 False\n\n示例::\n\n    sage: R.<x> = ZZ[]\n    sage: R.gen().is_gen()\n    True\n    sage: (x + 1).is_gen()\n    False',
             "return": 'bool',
@@ -1738,6 +2270,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '判断多项式在其基环上是否不可约。注意结果依赖基环（例如 2x 在 QQ[x] 中不可约但在 ZZ[x] 中可约）；非单位的常数可能不可约（如 ZZ 上的 5）。\n\n返回:\nbool -- 不可约返回 True，否则 False；零多项式和单位返回 False\n\n示例::\n\n    sage: R.<x> = ZZ[]\n    sage: (x^3 + 2).is_irreducible()\n    True\n    sage: (x^2 - 1).is_irreducible()\n    False\n    sage: R(0).is_irreducible()\n    False',
             "return": 'bool',
         },
+        "Polynomial.is_lorentzian": {
+            "doc": '判断该多项式是否为 Lorentzian 多项式；一元情形下等价于系数为正的单项式或零多项式。\n\n参数:\n- ``explain`` -- 是否返回失败原因（bool，默认 ``False``）；为 ``True`` 时返回 (bool, 原因字符串或 None)\n\n返回:\nbool -- 是 Lorentzian 多项式时返回 ``True``；``explain=True`` 时返回二元组 (判定结果, 失败原因)\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2).is_lorentzian()\n    True\n    sage: (x^2 + 1).is_lorentzian()\n    False\n    sage: (x^2 + 2*x).is_lorentzian(explain=True)\n    (False, \'inhomogeneous\')',
+            "return": 'bool',
+        },
         "Polynomial.is_monic": {
             "doc": "判断该多项式是否为首一多项式（首项系数为 1）；零多项式按定义不是首一的。\n\n返回:\nbool -- 首一时返回 True，否则返回 False\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 1).is_monic()\n    True\n    sage: (2*x^2 + 1).is_monic()\n    False",
             "return": 'bool',
@@ -1746,12 +2282,20 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": "判断该多项式是否为单位系数的单项式（生成元的某次幂，系数必须为 1）。\n\n返回:\nbool -- 是首一单项式时返回 True，否则返回 False\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2).is_monomial()\n    True\n    sage: (2*x^2).is_monomial()\n    False\n    sage: (x^2 + 1).is_monomial()\n    False",
             "return": 'bool',
         },
+        "Polynomial.is_nilpotent": {
+            "doc": '判断该多项式是否幂零，即存在某个正整数次幂等于零。\n\n参数:\n无参数。\n\n返回:\nbool -- 幂零时返回 ``True``（整环上仅零多项式幂零）\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + x).is_nilpotent()\n    False\n    sage: R.zero().is_nilpotent()\n    True',
+            "return": 'bool',
+        },
         "Polynomial.is_one": {
             "doc": "判断该多项式是否为常数 1。\n\n返回:\nbool -- 等于 1 时返回 True，否则返回 False\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 1).is_one()\n    False\n    sage: R.one().is_one()\n    True",
             "return": 'bool',
         },
         "Polynomial.is_primitive": {
             "doc": "判断该多项式是否为本原多项式。有限域上：不可约且其根生成乘法群（域论含义）；环上：系数生成单位理想（环论含义，如 ZZ 上内容为 1）。\n\n参数:\n- ``n`` -- 可选，应等于 q-1（q 为基域元素个数），用于加速（Integer，默认 None）\n- ``n_prime_divs`` -- 可选，n 的素因子列表，用于加速（list，默认 None）\n\n返回:\nbool -- 本原时返回 True，否则返回 False；基环为无限域时抛 NotImplementedError\n\n示例::\n\n    sage: R.<x> = GF(2)['x']\n    sage: (x^3 + x + 1).is_primitive()\n    True\n    sage: (x^4 + x^3 + x^2 + x + 1).is_primitive()\n    False\n    sage: R.<z> = ZZ['z']\n    sage: (2*z + 1).is_primitive()\n    True\n    sage: (2*z + 2).is_primitive()\n    False",
+            "return": 'bool',
+        },
+        "Polynomial.is_real_rooted": {
+            "doc": '判断多项式的根是否全部为实数。\n\n参数:\n无参数。\n\n返回:\nbool -- 所有根均为实数时返回 ``True``\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = (x - 1)*(x - 2)*(x - 3)\n    sage: f.is_real_rooted()\n    True\n    sage: (x^2 + 1).is_real_rooted()\n    False',
             "return": 'bool',
         },
         "Polynomial.is_square": {
@@ -1767,6 +2311,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Polynomial.is_unit": {
             "doc": "判断该多项式在其所在环中是否为可逆元（单位）。\n\n返回:\nbool -- 域上多项式仅非零常数多项式为单位；ZZ 上仅 ±1 为单位\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: R(2).is_unit()\n    True\n    sage: x.is_unit()\n    False\n    sage: R.<z> = ZZ['z']\n    sage: R(2).is_unit()\n    False\n    sage: R(-1).is_unit()\n    True",
+            "return": 'bool',
+        },
+        "Polynomial.is_weil_polynomial": {
+            "doc": '判断该多项式是否为 Weil 多项式（系数为有理数或整数，所有根满足 |α| = sqrt(q)）。\n\n参数:\n- ``return_q`` -- 是否同时返回对应的素数幂 q（bool，默认 ``False``）\n\n返回:\nbool -- 是 Weil 多项式时返回 ``True``；``return_q=True`` 时返回 (bool, q)，q 为 0 表示不存在\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 - x + 1).is_weil_polynomial()\n    True\n    sage: (x^2 - 2*x + 2).is_weil_polynomial(return_q=True)\n    (True, 2)',
             "return": 'bool',
         },
         "Polynomial.is_zero": {
@@ -1790,6 +2338,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.lm": {
             "doc": "返回该多项式的首项单项式（最高次的生成元幂，系数为 1）。\n\n返回:\nPolynomial -- 最高次的单项式\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (2*x^2 + 3*x + 4).lm()\n    x^2",
             "return": 'Polynomial',
+        },
+        "Polynomial.local_height": {
+            "doc": '返回该多项式在素/素理想 v 处的局部高度，即各系数在该处局部高度的最大值（基环须为数域或数域序）。\n\n参数:\n- ``v`` -- 基环的一个素数或素理想\n- ``prec`` -- 浮点精度位数（整数，默认 ``None`` 时取 53 位）\n\n返回:\nAny -- 实数，为系数的局部高度最大值\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 1/1331*x^2 + 1/4000*x\n    sage: f.local_height(1331)\n    7.19368581839511',
+        },
+        "Polynomial.local_height_arch": {
+            "doc": '返回该多项式在第 i 个无穷位（阿基米德位）处的局部高度，即各系数在该处局部高度的最大值（基环须为数域或数域序）。\n\n参数:\n- ``i`` -- 无穷位的编号（整数）\n- ``prec`` -- 浮点精度位数（整数，默认 ``None`` 时取 53 位）\n\n返回:\nAny -- 实数，为系数的阿基米德局部高度最大值\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 2*x^3 + 3*x - 5\n    sage: f.local_height_arch(0)\n    1.60943791243410',
         },
         "Polynomial.lt": {
             "doc": "返回该多项式的首项（最高次项，含系数）。\n\n返回:\nPolynomial -- 最高次项，即 lc() * lm()\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (2*x^2 + 3*x + 4).lt()\n    2*x^2",
@@ -1821,6 +2375,17 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": "截断乘法：计算 self * other 并丢弃次数 >= n 的项。\n\n参数:\n- ``other`` -- 乘数多项式（Polynomial）\n- ``n`` -- 截断阶数（int）\n\n返回:\nPolynomial -- (self * other) mod x^n，即保留低于 n 次的项\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (1 + x).multiplication_trunc(1 + x, 3)\n    x^2 + 2*x + 1\n    sage: (x^2 + 1).multiplication_trunc(x + 1, 4)\n    x^3 + x^2 + x + 1",
             "return": 'Polynomial',
         },
+        "Polynomial.newton_polytope": {
+            "doc": '返回该多项式的 Newton 多胞体（以各项次数为顶点的凸包）。\n\n参数:\n无参数。\n\n返回:\nAny -- 凸多胞体对象（Polyhedron）\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 2*x^3 + 3*x^2 + 1\n    sage: f.newton_polytope()\n    A 1-dimensional polyhedron in ZZ^1 defined as the convex hull of 2 vertices',
+        },
+        "Polynomial.newton_raphson": {
+            "doc": '用 Newton-Raphson 迭代法从初始值 x0 出发，返回 n 次迭代的近似根列表。\n\n参数:\n- ``n`` -- 迭代次数（整数）\n- ``x0`` -- 初始猜测值（基环元素）\n\n返回:\nlist[Any] -- n 个逐次逼近的迭代值列表；若某次迭代落在临界点上则抛出 ``ZeroDivisionError``\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^2 - 2\n    sage: f.newton_raphson(3, 2)\n    [3/2, 17/12, 577/408]',
+            "return": 'list[Any]',
+        },
+        "Polynomial.newton_slopes": {
+            "doc": '返回该多项式关于素数 p 的 Newton 多边形斜率（即根在 p-adic 意义下的赋值）。\n\n参数:\n- ``p`` -- 素数（用于定义 p-adic 赋值）\n- ``lengths`` -- 是否返回带重数的形式（bool，默认 ``False``）；为 ``True`` 时返回 (斜率, 重数) 元组列表\n\n返回:\nlist[Any] -- 斜率列表；``lengths=True`` 时为 (斜率, 重数) 元组列表\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^2 - 2\n    sage: f.newton_slopes(2)\n    [1/2, 1/2]\n    sage: f.newton_slopes(2, lengths=True)\n    [(1/2, 2)]',
+            "return": 'list[Any]',
+        },
         "Polynomial.norm": {
             "doc": "返回该多项式的 p-范数：系数绝对值 p 次方之和的 1/p 次方（p 为 +infinity 时取系数的最大绝对值）。\n\n参数:\n- ``p`` -- 范数次数，须为正整数或 +infinity（Integer）；p <= 0 时抛 ValueError\n\n返回:\nAny -- 实数（RR 元素）\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: f = x^6 + x^2 - x^4 - 2*x^3\n    sage: f.norm(2)\n    2.64575131106459\n    sage: f.norm(1)\n    5.00000000000000\n    sage: f.norm(infinity)\n    2.00000000000000",
         },
@@ -1828,9 +2393,21 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": "若该多项式是某个多项式的 n 次幂，则返回其 n 次方根；否则抛 ValueError。\n\n参数:\n- ``n`` -- 开方次数（int）\n\n返回:\nPolynomial -- 满足 (根)^n == self 的多项式；不是 n 次幂时抛 ValueError（有限域上同样检查次数与系数条件）\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 2*x + 1).nth_root(2)\n    x + 1\n    sage: (x^2 + 1).nth_root(2)\n    Traceback (most recent call last):\n    ...\n    ValueError: not a 2nd power\n    sage: R.<x> = GF(2)['x']\n    sage: (x^2 + 1).nth_root(2)\n    x + 1",
             "return": 'Polynomial',
         },
+        "Polynomial.number_of_real_roots": {
+            "doc": '返回多项式的实根个数，不计重数。\n\n参数:\n无参数。\n\n返回:\nint -- 实根的个数\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 2\n    sage: f.number_of_real_roots()\n    1',
+            "return": 'int',
+        },
+        "Polynomial.number_of_roots_in_interval": {
+            "doc": '返回多项式在闭区间 [a, b] 内的实根个数，不计重数，端点包含在内。\n\n参数:\n- ``a`` -- 区间左端点（数值，默认 ``None`` 表示负无穷）\n- ``b`` -- 区间右端点（数值，默认 ``None`` 表示正无穷）\n\n返回:\nint -- 区间内实根的个数\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^2 - 2\n    sage: f.number_of_roots_in_interval(0, 2)\n    1\n    sage: f.number_of_roots_in_interval()\n    2',
+            "return": 'int',
+        },
         "Polynomial.number_of_terms": {
             "doc": "返回该多项式非零系数的个数（又称权重、汉明重量或稀疏度）。\n\n返回:\nint -- 非零项数目；零多项式返回 0\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + x + 1).number_of_terms()\n    3\n    sage: R.zero().number_of_terms()\n    0",
             "return": 'int',
+        },
+        "Polynomial.numerator": {
+            "doc": '返回多项式的一个分子，按 self * self.denominator() 计算。\n\n参数:\n无参数。\n\n返回:\nPolynomial -- 分子多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 1/2*x^2 + 3/4\n    sage: f.numerator()\n    2*x^2 + 3',
+            "return": 'Polynomial',
         },
         "Polynomial.ord": {
             "doc": "返回该多项式在 p 处的赋值（valuation），即生成元整除该多项式的最低幂指数。\n\n参数:\n- ``p`` -- 求赋值所用的对象（可选，默认 None，等价于对生成元求赋值）（Any）\n\n返回:\nAny -- 整数赋值；零多项式返回 +Infinity\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^3 + x^2).ord()\n    2\n    sage: (x^2 + 1).ord()\n    0\n    sage: R.zero().ord()\n    +Infinity",
@@ -1838,6 +2415,20 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.padded_list": {
             "doc": "返回该多项式的系数列表，并右端补零使长度恰好为 n（不足则截断）。\n\n参数:\n- ``n`` -- 目标长度，须为非负整数（int，默认 None 表示次数 + 1）\n\n返回:\nlist[Any] -- 从常数项开始的系数列表，长度恰为 n；n < 0 时抛 ValueError\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 1).padded_list(5)\n    [1, 0, 1, 0, 0]\n    sage: (x^2 + 1).padded_list(2)\n    [1, 0]\n    sage: (x^2 + 1).padded_list()\n    [1, 0, 1]",
             "return": 'list[Any]',
+        },
+        "Polynomial.plot": {
+            "doc": '绘制多项式在区间上的函数图像并返回一个 Graphics 图像对象。\n\n参数:\n- ``xmin`` -- 绘图区间的左端点（数值，默认 ``None`` 时自动选取）\n- ``xmax`` -- 绘图区间的右端点（数值，默认 ``None`` 时自动选取）\n- 其余关键字参数（如 plot_points 等）直接传给底层绘图函数\n\n返回:\nAny -- 类型为 ``sage.plot.graphics.Graphics`` 的图像对象\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 2*x + 1\n    sage: g = f.plot()\n    sage: type(g)\n    <class \'sage.plot.graphics.Graphics\'>',
+        },
+        "Polynomial.polynomial": {
+            "doc": '把多项式看作指定变量上的多项式返回；一元情形下返回自身（可为同一个对象）。\n\n参数:\n- ``var`` -- 父环的变量之一（环的生成元）\n\n返回:\nPolynomial -- 视作 ``var`` 上的一元多项式；对一元多项式即 ``self`` 本身\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 2*x + 1\n    sage: f.polynomial(x) is f\n    True',
+            "return": 'Polynomial',
+        },
+        "Polynomial.power_trunc": {
+            "doc": '计算该多项式的 n 次幂并截断到指定精度（即模 x^prec 取余）。\n\n参数:\n- ``n`` -- 幂指数（整数）\n- ``prec`` -- 截断精度（整数，结果只保留次数小于 prec 的项）\n\n返回:\nPolynomial -- self 的 n 次幂按精度 prec 截断后的多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).power_trunc(5, 4)\n    5*x^2 + 1',
+            "return": 'Polynomial',
+        },
+        "Polynomial.prec": {
+            "doc": '返回该多项式的精度。普通多项式不含 big-oh，精度恒为 +Infinity；对由 add_bigoh 得到的截断级数元素返回有限的截断精度。\n\n参数:\n无参数。\n\n返回:\nAny -- +Infinity（普通多项式）或非负整数（截断级数元素）\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 2*x + 1\n    sage: f.prec()\n    +Infinity\n    sage: x.add_bigoh(5)\n    x + O(x^5)\n    sage: x.add_bigoh(5).prec()\n    5',
         },
         "Polynomial.pseudo_quo_rem": {
             "doc": "计算两个多项式的伪除法，返回 (伪商, 伪余数)。\n\n参数:\n- ``other`` -- 非零多项式（Polynomial）\n\n返回:\ntuple[Any, ...] -- (Q, R)，满足 l^(m-n+1) * self = Q * other + R，其中 m、n 分别为两者的次数，l 为 other 的首项系数，且 deg(R) < deg(other)；other 为零时抛 ZeroDivisionError\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^3 + x + 1).pseudo_quo_rem(x^2 + 1)\n    (x, 1)\n    sage: R.<z> = ZZ['z']\n    sage: (z^4 + 6*z^3 + z^2 - z + 2).pseudo_quo_rem(2*z^2 - 3*z - 1)\n    (4*z^2 + 30*z + 51, 175*z + 67)",
@@ -1853,6 +2444,18 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": "返回该多项式的根式（无平方部分）：域上为所有互不相同的不可约因式的乘积。\n\n返回:\nPolynomial -- 无平方部分，self 的每个不可约因子只出现一次\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^3 + x^2).radical()\n    x^2 + x\n    sage: R.<x> = GF(2)['x']\n    sage: (x^3 + x^2 + x + 1).radical()\n    x + 1",
             "return": 'Polynomial',
         },
+        "Polynomial.rational_reconstruction": {
+            "doc": '求满足 self * d 与 n 在模 m 下同余的多项式对 (n, d)，且 n.degree() <= n_deg、d.degree() <= d_deg。\n\n参数:\n- ``m`` -- 模多项式（一元多项式）\n- ``n_deg`` -- 分子次数上界（整数，默认 floor((deg(m)-1)/2)）\n- ``d_deg`` -- 分母次数上界（整数，默认 floor((deg(m)-1)/2)）\n\n返回:\ntuple[Any, ...] -- (n, d) 两个多项式，满足 self*d ≡ n (mod m) 及次数约束\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = 3*x + 1/2\n    sage: f.rational_reconstruction(x - 1, 2, 2)\n    (7/2, 1)',
+            "return": 'tuple[Any, ...]',
+        },
+        "Polynomial.real_roots": {
+            "doc": '返回多项式的全部实根，不计重数，按升序排列。\n\n参数:\n无参数。\n\n返回:\nlist[Any] -- 实根列表，元素为 RR（实数域）中的元素\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 2\n    sage: f.real_roots()\n    [1.25992104989487]',
+            "return": 'list[Any]',
+        },
+        "Polynomial.reciprocal_transform": {
+            "doc": '把一般多项式变换为自反多项式，满足 P(x) = Q(x + q/x) * x^deg(Q) * R(x)。\n\n参数:\n- ``R`` -- 变换中的余因子多项式（多项式，默认 1）\n- ``q`` -- 缩放因子（标量，默认 1）\n\n返回:\nPolynomial -- 自反变换后的多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).reciprocal_transform()\n    x^4 + 3*x^2 + 1\n    sage: (x^2 + 1).reciprocal_transform(q=2)\n    x^4 + 5*x^2 + 4',
+            "return": 'Polynomial',
+        },
         "Polynomial.resultant": {
             "doc": '计算 self 与 other 的结式（resultant）。两多项式有公共根（不互素）当且仅当结式为 0。\n\n参数:\n- ``other`` -- 多项式（Polynomial）\n\n返回:\n基环元素 -- 结式（resultant），属于多项式环的基环；=0 表示两多项式有公共因子\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: f = x^3 + x + 1; g = x^3 - x - 1\n    sage: f.resultant(g)\n    -8\n    sage: f.resultant(f).parent() is QQ\n    True',
         },
@@ -1862,6 +2465,9 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.revert_series": {
             "doc": "返回该多项式的级数反演：求 f 使 f(self(x)) = self(f(x)) = x (mod x^n)。\n\n参数:\n- ``n`` -- 截断阶数（int）\n\n返回:\nPolynomial -- 反演级数截断到 x^n；仅部分系数环支持\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x + x^2).revert_series(5)\n    -5*x^4 + 2*x^3 - x^2 + x\n    sage: (x - x^3).revert_series(6)\n    3*x^5 + x^3 + x",
             "return": 'Polynomial',
+        },
+        "Polynomial.root_field": {
+            "doc": '返回由不可约多项式 ``self`` 的根生成的域。\n\n参数:\n- ``names`` -- 新变量的名字（字符串）\n- ``check_irreducible`` -- 是否检查多项式不可约（bool，默认 ``True``）\n\n返回:\nAny -- 数域（NumberField）或多项式环的商域\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 2\n    sage: f.root_field("a")\n    Number Field in a with defining polynomial x^3 - 2',
         },
         "Polynomial.roots": {
             "doc": '求多项式的根（默认在基环中找全部根）。\n\n参数:\n- ``ring`` -- 在哪个环中求根，默认多项式自己的基环（ring）\n- ``multiplicities`` -- 是否返回重数，默认 True（bool）：True 时每个根以 (根, 重数) 二元组形式返回，False 时只返回去重后的根列表\n- ``algorithm`` -- 求根算法（str 或 None），默认自动选择\n\n返回:\n列表 -- multiplicities=True 时是 [(根, 重数), ...]，每个根带重数；multiplicities=False 时是去重后的根列表 [根, ...]；没有根时返回空列表 []\n\n示例::\n\n    sage: R.<x> = GF(7)[]\n    sage: (x^2 - 1).roots()\n    [(6, 1), (1, 1)]\n    sage: (x^2 - 1).roots(multiplicities=False)\n    [6, 1]\n    sage: (x^2 + 1).roots()\n    []\n    sage: R.<x> = QQ[]\n    sage: ((x^3 - 1)^2).roots()\n    [(1, 2)]',
@@ -1873,6 +2479,9 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.specialization": {
             "doc": "对该多项式做特化：按字典 D 把生成元代入给定值，得到特化后的元素。\n\n参数:\n- ``D`` -- 字典 {生成元: 值}，指定代入（dict，可选）\n- ``phi`` -- SpecializationMorphism 特化态射（可选）\n\n返回:\nAny -- 特化结果（可为基环元素或多项式）；D 与 phi 均未提供时抛 ValueError\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 1).specialization({x: 2})\n    5",
         },
+        "Polynomial.splitting_field": {
+            "doc": '计算该多项式的绝对分裂域。\n\n参数:\n- ``names`` -- 新变量的名字（字符串或字符串列表，默认 ``None`` 时自动生成）\n- ``map`` -- 是否同时返回嵌入映射（bool，默认 ``False``）\n- 其余关键字参数传递给数域构造\n\n返回:\nAny -- 数域（NumberField），其定义多项式为原多项式的绝对分裂多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 - 2\n    sage: f.splitting_field("a")\n    Number Field in a with defining polynomial x^6 + 3*x^5 + 6*x^4 + 3*x^3 + 9*x + 9',
+        },
         "Polynomial.square": {
             "doc": "返回该多项式的平方 self^2。\n\n返回:\nPolynomial -- self 与自身的乘积\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^2 + 1).square()\n    x^4 + 2*x^2 + 1",
             "return": 'Polynomial',
@@ -1880,8 +2489,23 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Polynomial.squarefree_decomposition": {
             "doc": "返回该多项式的无平方分解：将其分解为互素且各自无平方因子的因子（连同常数因子）的乘积。\n\n返回:\nAny -- Factorization 形式的乘积表示；零多项式抛 ValueError\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: (x^3 + x^2).squarefree_decomposition()\n    (x + 1) * x^2\n    sage: ((x^2 + 2*x + 1)*(x + 1)).squarefree_decomposition()\n    (x + 1)^3",
         },
+        "Polynomial.subresultants": {
+            "doc": '返回 ``self`` 与 ``other`` 的全部非零子结式多项式。\n\n参数:\n- ``other`` -- 另一个多项式\n\n返回:\nlist[Any] -- 非零子结式多项式列表，元素与 ``self`` 同环\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^4 - 1\n    sage: g = x^3 + 1\n    sage: f.subresultants(g)\n    [x + 1, -x - 1]',
+            "return": 'list[Any]',
+        },
         "Polynomial.subs": {
             "doc": "将多项式中的生成元替换为给定值并求值。\n\n参数:\n- ``in_dict`` -- 字典 {生成元: 值}，键必须与生成元匹配，可为空字典（dict）\n- ``*args`` -- 位置参数，第一个参数替换生成元，其余参数从左到右替换系数（Any）\n- ``**kwds`` -- 关键字参数，如 ``x=2`` 指定生成元的取值（Any）\n\n返回:\nAny -- 替换并求值后的结果；替换值为基环元素时结果属于基环，也可以是多项式\n\n示例::\n\n    sage: R.<x> = QQ['x']\n    sage: f = x^2 + 1\n    sage: f.subs(x=2)\n    5\n    sage: f.subs(x=-1)\n    2\n    sage: f.subs({x: 3})\n    10",
+        },
+        "Polynomial.sylvester_matrix": {
+            "doc": '返回 ``self`` 与 ``right`` 的 Sylvester 矩阵（其行列式为两多项式的结式）。\n\n参数:\n- ``right`` -- 另一个多项式\n- ``variable`` -- 关于哪个变量构造矩阵（默认 ``None`` 时自动选取）\n\n返回:\nAny -- 矩阵对象，阶数为两多项式次数之和，元素属于基环\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: f = x^3 + x + 1\n    sage: g = x^2 + 1\n    sage: f.sylvester_matrix(g)\n    [1 0 1 1 0]\n    [0 1 0 1 1]\n    [1 0 1 0 0]\n    [0 1 0 1 0]\n    [0 0 1 0 1]',
+        },
+        "Polynomial.symmetric_power": {
+            "doc": '返回根为该多项式 k 个不同根的乘积的多项式（对称幂）。\n\n参数:\n- ``k`` -- 每次取根的个数（正整数）\n- ``monic`` -- 是否返回首一多项式（bool，默认 ``False``）\n\n返回:\nPolynomial -- 根为所有 k 个不同根之积的多项式\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).symmetric_power(2)\n    x - 1',
+            "return": 'Polynomial',
+        },
+        "Polynomial.trace_polynomial": {
+            "doc": '计算迹多项式及其余因子，返回三元组 (Q, R, q)，满足 P(x) = Q(x + q/x) * x^deg(Q) * R(x)。\n\n参数:\n无参数。\n\n返回:\ntuple[Any, ...] -- (迹多项式 Q, 余因子 R, 缩放因子 q)；基环须能嵌入实数\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^3 - 1).trace_polynomial()\n    (x + 1, x - 1, 1)',
+            "return": 'tuple[Any, ...]',
         },
         "Polynomial.truncate": {
             "doc": '返回次数 < n 的部分（即 self 模 x^n 的同余类中次数最低的代表元，截掉次数 >= n 的所有项）。\n\n参数:\n- ``n`` -- 截断阈值（int）：保留次数 < n 的项\n\n返回:\nPolynomial -- 截断后的多项式；n=0 时返回零多项式\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: f = x^3 + x^2 + x + 1\n    sage: f.truncate(2)\n    x + 1\n    sage: f.truncate(0)\n    0',
@@ -1889,6 +2513,14 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Polynomial.valuation": {
             "doc": '返回多项式的赋值（valuation）：最低次非零项的次数（即 x^r 因子中 r 的值）；零多项式的赋值为 +Infinity。\n\n参数:\n- ``p`` -- 可选（Polynomial 或 None）：给定多项式 p 时返回 p 整除 self 的最大幂次\n\n返回:\n整数或 +Infinity -- self 的最低非零项次数；零多项式返回 +Infinity\n\n示例::\n\n    sage: R.<x> = ZZ[]\n    sage: (x^2 + x).valuation()\n    1\n    sage: (x^2 + 1).valuation()\n    0\n    sage: R(0).valuation()\n    +Infinity',
+        },
+        "Polynomial.variable_name": {
+            "doc": '返回该多项式所用变量的名字符串。\n\n参数:\n无参数。\n\n返回:\nstr -- 变量名（如 "x"）\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).variable_name()\n    \'x\'',
+            "return": 'str',
+        },
+        "Polynomial.variables": {
+            "doc": '返回出现在该多项式中的变量所构成的元组。\n\n参数:\n无参数。\n\n返回:\ntuple[Any, ...] -- 变量元组（一元情形为只含单个生成元的元组）\n\n示例::\n\n    sage: R.<x> = QQ["x"]\n    sage: (x^2 + 1).variables()\n    (x,)',
+            "return": 'tuple[Any, ...]',
         },
         "Polynomial.xgcd": {
             "doc": '计算扩展欧几里得（extended gcd），返回三个多项式组成的元组。\n\n参数:\n- ``other`` -- 与 self 同环的多项式（Polynomial）\n\n返回:\n三元组 (g, s, t) -- 依次为：g 是 self 与 other 的最大公因式（基环为域时首一）；s、t 是组合系数，满足等式 g = s*self + t*other，可用于求模逆元（贝祖恒等式）\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: (x^2 - 1).xgcd(x - 1)\n    (x - 1, 0, 1)\n    sage: g, s, t = (x^2 - 1).xgcd(x - 1)\n    sage: g == s*(x^2 - 1) + t*(x - 1)\n    True\n    sage: R.<x> = GF(7)[]\n    sage: (x^2 + 1).xgcd(x + 1)\n    (1, 4, 3*x + 4)',
@@ -1938,6 +2570,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Rational.additive_order": {
             "doc": '返回该有理数在加法群 Q 中的阶。\n\n  返回:\n  Any -- 0 的阶为 1；非零有理数的阶为 +Infinity。\n\n  示例::\n\n      sage: QQ(0).additive_order()\n      1\n      sage: (QQ(3)/4).additive_order()\n      +Infinity',
         },
+        "Rational.as_integer_ratio": {
+            "doc": '返回该有理数的 (分子, 分母) 整数对。\n\n返回:\ntuple[Integer, Integer] -- 有序对 (self.numerator(), self.denominator())，即已约分的分子与分母\n\n示例::\n\n    sage: (-12/29).as_integer_ratio()\n    (-12, 29)',
+            "return": 'tuple[Integer, Integer]',
+        },
         "Rational.ceil": {
             "doc": '返回该有理数的向上取整（ceiling）。\n\n  返回:\n  Integer -- 不小于该有理数的最小整数。\n\n  示例::\n\n      sage: (QQ(7)/3).ceil()\n      3\n      sage: (QQ(-7)/3).ceil()\n      -2',
             "return": 'Integer',
@@ -1975,17 +2611,52 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "Rational.gamma": {
+            "doc": '返回该有理数处的伽马函数值。\n\n参数:\n- ``prec`` -- 精度位数（int，可选）；给出时返回 RealField 数值近似\n\n返回:\nAny -- 整数处返回精确整数值，半整数处返回 sqrt(pi) 的有理数倍，其余情形返回符号表达式 gamma(self)；给定 ``prec`` 时返回数值近似\n\n示例::\n\n    sage: (1/2).gamma()\n    sqrt(pi)\n    sage: (7/2).gamma()\n    15/8*sqrt(pi)\n    sage: QQ(6).gamma()\n    120\n    sage: (1/2).gamma(prec=100)\n    1.7724538509055160272981674833',
+        },
+        "Rational.global_height": {
+            "doc": '返回该有理数的绝对对数高度（global height）。\n\n参数:\n- ``prec`` -- 精度位数（int，可选，默认 RealField 默认精度）\n\n返回:\nRealNumber -- log(max(|分子|, 分母)) 的实数值（等于 Archimedean 分量与非 Archimedean 分量之和）\n\n示例::\n\n    sage: QQ(6/25).global_height()\n    3.21887582486820\n    sage: QQ(0).global_height()\n    0.000000000000000',
+            "return": 'RealNumber',
+        },
+        "Rational.global_height_arch": {
+            "doc": '返回该有理数高度的 Archimedean 分量，即无限位处局部高度 max(log(|self|), 0)（QQ 只有一个无限位，此函数为与数域接口兼容而单独提供）。\n\n参数:\n- ``prec`` -- 精度位数（int，可选，默认 RealField 默认精度）\n\n返回:\nRealNumber -- 与 local_height_arch 相同的实数值\n\n示例::\n\n    sage: QQ(25/6).global_height_arch()\n    1.42711635564015',
+            "return": 'RealNumber',
+        },
+        "Rational.global_height_non_arch": {
+            "doc": '返回该有理数高度的非 Archimedean 分量，即所有素数处局部高度之和，等于分母的对数。\n\n参数:\n- ``prec`` -- 精度位数（int，可选，默认 RealField 默认精度）\n\n返回:\nRealNumber -- log(分母) 的实数值；该数为整数时为 0\n\n示例::\n\n    sage: QQ(5/6).global_height_non_arch()\n    1.79175946922805\n    sage: QQ(5/6).global_height_non_arch(100)\n    1.7917594692280550008124773584',
+            "return": 'RealNumber',
+        },
         "Rational.height": {
             "doc": '返回该有理数的高度，即约分后分子与分母绝对值的最大值。\n\n  返回:\n  Integer -- max(|分子|, 分母)；注意 0 的高度实测为 1（实现直接返回其分母）。\n\n  示例::\n\n      sage: (QQ(2)/3).height()\n      3\n      sage: (QQ(-97)/4).height()\n      97\n      sage: QQ(0).height()\n      1',
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "Rational.imag": {
+            "doc": '返回该有理数的虚部，恒为零。\n\n返回:\nRational -- 0\n\n示例::\n\n    sage: (1/239).imag()\n    0',
+            "return": 'Rational',
+        },
+        "Rational.is_S_integral": {
+            "doc": '判断该有理数是否为 S-整数，即分母的素因子全部属于 S。\n\n参数:\n- ``S`` -- 素数列表或元组（list 或 tuple，默认 []）；元素须为素数整数，不接受素理想\n\n返回:\nbool -- 若分母只被 S 中素数整除（或该数本身为整数）则返回 True，否则返回 False\n\n示例::\n\n    sage: (1/2).is_S_integral()\n    False\n    sage: (1/2).is_S_integral([2])\n    True\n    sage: (1/3).is_S_integral([3])\n    True\n    sage: QQ(7).is_S_integral([])\n    True',
+            "return": 'bool',
+        },
+        "Rational.is_S_unit": {
+            "doc": '判断该有理数是否为 S-单位，即分子与分母的素因子全部属于 S。\n\n参数:\n- ``S`` -- 素数列表或元组（list 或 tuple，默认 None）；元素须为素数整数，不接受素理想\n\n返回:\nbool -- 若分子分母只被 S 中素数整除（或该数等于 +/-1）则返回 True，否则返回 False\n\n示例::\n\n    sage: (1/2).is_S_unit()\n    False\n    sage: (1/2).is_S_unit([2])\n    True\n    sage: QQ(10).is_S_unit([2, 5])\n    True\n    sage: (3/4).is_S_unit([2, 3])\n    True',
+            "return": 'bool',
+        },
         "Rational.is_integral": {
             "doc": '判断该有理数是否为整数。\n\n  返回:\n  bool -- 分母为 1 时返回 True。\n\n  示例::\n\n      sage: QQ(2).is_integral()\n      True\n      sage: (QQ(1)/2).is_integral()\n      False',
             "return": 'bool',
         },
+        "Rational.is_norm": {
+            "doc": "判断该有理数是否为数域 ``L`` 中某个元素的范数。\n\n参数:\n- ``L`` -- 数域（NumberField），也可以是 QQ 本身\n- ``element`` -- 是否同时返回范数等于 self 的元素（bool，默认 False）\n- ``proof`` -- 是否无条件给出正确结论（bool，默认 True）；为 False 时结论依赖于 GRH 假设\n\n返回:\ntuple[bool, Any] -- element 为 False 时返回布尔值 B，表示 self 是否为 L 中某元素的范数；element 为 True 时返回 (B, x)：B 为 True 时 x 是 L 中满足 x.norm() == self 的元素，否则 x 为 None\n\n示例::\n\n    sage: x = polygen(QQ, 'x')\n    sage: K = NumberField(x^2 - 2, 'beta')\n    sage: (1/7).is_norm(K)\n    True\n    sage: (1/10).is_norm(K)\n    False\n    sage: (1/7).is_norm(K, element=True)\n    (True, 1/7*beta + 3/7)\n    sage: (1/10).is_norm(K, element=True)\n    (False, None)",
+            "return": 'tuple[bool, Any]',
+        },
         "Rational.is_nth_power": {
             "doc": '判断该有理数是否为某个有理数的 n 次幂。\n\n  参数:\n  - ``n`` -- 指数（需能装入 C int）（int）\n\n  返回:\n  bool -- self 为 n 次幂时返回 True。\n\n  示例::\n\n      sage: QQ(8).is_nth_power(3)\n      True\n      sage: QQ(2).is_nth_power(3)\n      False',
+            "return": 'bool',
+        },
+        "Rational.is_one": {
+            "doc": '判断该有理数是否为 1。\n\n返回:\nbool -- 若该有理数等于 1 则返回 True，否则返回 False\n\n示例::\n\n    sage: QQ(1/2).is_one()\n    False\n    sage: QQ(4/4).is_one()\n    True',
             "return": 'bool',
         },
         "Rational.is_padic_square": {
@@ -1996,9 +2667,28 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '判断该有理数是否为完美幂（存在 b 与 e > 1 使 self = b^e）。\n\n  参数:\n  - ``expected_value`` -- 提示 self 是否为完美幂；不影响结果的正确性，只影响运行速度（bool，默认 False）\n\n  返回:\n  bool -- 是完美幂时返回 True。\n\n  示例::\n\n      sage: (QQ(4)/9).is_perfect_power()\n      True\n      sage: (QQ(4)/3).is_perfect_power()\n      False\n      sage: (QQ(-1)/27).is_perfect_power()\n      True',
             "return": 'bool',
         },
+        "Rational.is_rational": {
+            "doc": '恒返回 True，因为该数本身即为有理数。\n\n返回:\nbool -- 恒为 True\n\n示例::\n\n    sage: (3/4).is_rational()\n    True',
+            "return": 'bool',
+        },
         "Rational.is_square": {
             "doc": '判断该有理数是否为有理数域中的平方数。\n\n  返回:\n  bool -- 若存在有理数 r 使 r^2 = self 则返回 True。\n\n  示例::\n\n      sage: (QQ(4)/9).is_square()\n      True\n      sage: QQ(2).is_square()\n      False',
             "return": 'bool',
+        },
+        "Rational.list": {
+            "doc": '返回仅包含该有理数本身的单元素列表，用于与数域元素（NumberFieldElement）的 list 方法保持兼容。\n\n返回:\nlist[Rational] -- 列表 [self]\n\n示例::\n\n    sage: QQ(5/3).list()\n    [5/3]',
+            "return": 'list[Rational]',
+        },
+        "Rational.local_height": {
+            "doc": '返回该有理数在素数 ``p`` 处的局部高度。\n\n参数:\n- ``p`` -- 素数（Integer）\n- ``prec`` -- 精度位数（int，可选，默认 RealField 默认精度）\n\n返回:\nRealNumber -- max(0, -v_p(self)) * log(p) 的实数值，其中 v_p 为 p-adic 赋值；p 不整除分母时高度为 0\n\n示例::\n\n    sage: QQ(25/6).local_height(2)\n    0.693147180559945\n    sage: QQ(25/6).local_height(5)\n    0.000000000000000\n    sage: QQ(25/6).local_height(2, prec=10)\n    0.69',
+            "return": 'RealNumber',
+        },
+        "Rational.local_height_arch": {
+            "doc": '返回该有理数在唯一无限位（Archimedean）处的局部高度。\n\n参数:\n- ``prec`` -- 精度位数（int，可选，默认 RealField 默认精度）\n\n返回:\nRealNumber -- max(log(|self|), 0) 的实数值\n\n示例::\n\n    sage: QQ(6/25).local_height_arch()\n    0.000000000000000\n    sage: QQ(25/6).local_height_arch()\n    1.42711635564015\n    sage: QQ(25/6).local_height_arch(100)\n    1.4271163556401457483890413081',
+            "return": 'RealNumber',
+        },
+        "Rational.log": {
+            "doc": '返回该有理数的对数。\n\n参数:\n- ``m`` -- 对数的底（Rational，可选，默认自然对数底 e）\n- ``prec`` -- 精度位数（int，可选）；给出时返回 RealField 数值近似\n\n返回:\nAny -- 未给 ``prec`` 时返回符号表达式（能精确算出的情形返回精确值，如 3、-3）；给定 ``prec`` 时返回 RealField 中精度为 ``prec`` 位的数值近似；负底时返回含虚部的复数值\n\n示例::\n\n    sage: QQ(125).log(5)\n    3\n    sage: (125/8).log(5/2)\n    3\n    sage: (124/345).log(5)\n    log(124/345)/log(5)\n    sage: (125/8).log(5/2, prec=53)\n    3.00000000000000',
         },
         "Rational.minpoly": {
             "doc": "返回该有理数在 Q 上的极小多项式。\n\n  参数:\n  - ``var`` -- 多项式的不定元（str，默认 'x'）\n\n  返回:\n  Any -- 一次多项式 var - self。\n\n  示例::\n\n      sage: (QQ(3)/4).minpoly()\n      x - 3/4\n      sage: (QQ(3)/4).minpoly(var='t')\n      t - 3/4",
@@ -2032,6 +2722,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回去掉 S 中所有素数全部幂之后的有理数。\n\n  参数:\n  - ``S`` -- 素数列表或元组（元素须为 Integer；直接传 Python int 会抛 TypeError）（list[Integer]/tuple[Integer, ...]，默认 []）\n\n  返回:\n  Rational -- 移除 S 中素数所有幂后的部分；self 为 0 时返回 0。\n\n  示例::\n\n      sage: (QQ(3)/4).prime_to_S_part([ZZ(2)])\n      3\n      sage: (QQ(-700)/99).prime_to_S_part([ZZ(2), ZZ(3), ZZ(5)])\n      -7/11',
             "return": 'Rational',
         },
+        "Rational.real": {
+            "doc": '返回该有理数的实部，即其自身。\n\n返回:\nRational -- 该有理数本身\n\n示例::\n\n    sage: (1/2).real()\n    1/2',
+            "return": 'Rational',
+        },
         "Rational.relative_norm": {
             "doc": '返回该有理数的相对范数，即它自身。\n\n  返回:\n  Rational -- self。\n\n  示例::\n\n      sage: (QQ(3)/4).relative_norm()\n      3/4',
             "return": 'Rational',
@@ -2053,6 +2747,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回该有理数的无平方因子部分。\n\n  返回:\n  Rational -- 满足 self = z * y^2（y^2 为完全平方）的 z。\n\n  示例::\n\n      sage: QQ(12).squarefree_part()\n      3\n      sage: (QQ(2)/3).squarefree_part()\n      6',
             "return": 'Rational',
         },
+        "Rational.str": {
+            "doc": "返回该有理数在指定基数下的字符串表示。\n\n参数:\n- ``base`` -- 基数，介于 2 与 36 之间的整数（int，默认 10）\n\n返回:\nstr -- 该有理数的字符串表示，分子与分母均以 ``base`` 基数书写，分母为 1 时省略\n\n示例::\n\n    sage: (-4/17).str()\n    '-4/17'\n    sage: (-4/17).str(2)\n    '-100/10001'",
+            "return": 'str',
+        },
         "Rational.support": {
             "doc": '返回该有理数分解中指数非零的所有素数。\n\n  返回:\n  list[Integer] -- 按升序排列的素数列表；0 的支撑未定义，抛 ArithmeticError。\n\n  示例::\n\n      sage: (QQ(12)/5).support()\n      [2, 3, 5]\n      sage: (QQ(-12)/5).support()\n      [2, 3, 5]',
             "return": 'list[Integer]',
@@ -2061,6 +2759,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "Rational.trace": {
             "doc": '返回该有理数作为 Q 上元素的迹，即它自身。\n\n  返回:\n  Rational -- self。\n\n  示例::\n\n      sage: (QQ(3)/4).trace()\n      3/4',
             "return": 'Rational',
+        },
+        "Rational.trunc": {
+            "doc": '将该有理数向零方向取整。\n\n返回:\nInteger -- 向零方向最近的整数（正数向下、负数向上取整）\n\n示例::\n\n    sage: (5/3).trunc()\n    1\n    sage: (-5/3).trunc()\n    -1',
+            "return": 'Integer',
         },
         "Rational.val_unit": {
             "doc": '返回该有理数的 p 进赋值与其 p 进单位部分。\n\n  参数:\n  - ``p`` -- 素数，须为 Integer；直接传 Python int 会抛 TypeError（Sage REPL 中由预处理器自动转换，裸 Python 需用 ZZ(p)）（Integer）\n\n  返回:\n  tuple[Integer, Rational] -- 二元组 (p 进赋值, p 进单位部分)，按此顺序；self 为 0 时返回 (+Infinity, 1)。\n\n  示例::\n\n      sage: (QQ(-4)/17).val_unit(ZZ(2))\n      (2, -1/17)\n      sage: (QQ(-4)/17).val_unit(ZZ(17))\n      (-1, -4)\n      sage: QQ(0).val_unit(ZZ(17))\n      (+Infinity, 1)',

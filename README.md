@@ -189,7 +189,7 @@ so the generator repairs and fills docstrings during generation from three
 sources, in priority order:
 
 1. **Curated docs** (`supplemental_docs.py`) -- Chinese explanations with
-   verified `sage:` examples and precise return annotations for 500+
+   verified `sage:` examples and precise return annotations for 700+
    CTF-critical APIs (finite fields, polynomial rings, modular arithmetic,
    elliptic curves, matrices, number-theory tools), every example executed
    against the installed Sage before being written.  Regenerate the file

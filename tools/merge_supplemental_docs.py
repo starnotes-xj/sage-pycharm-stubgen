@@ -41,8 +41,12 @@ def load_existing() -> dict[str, dict[str, dict]]:
     return namespace["SUPPLEMENTAL_DOCS"]
 
 
+IMPORT_LINE_RE = re.compile(r"^(?:from\s+\S+\s+import\s+|import\s+)")
+
+
 def collect_new_entries(paths: list[Path]) -> list[dict]:
     entries: dict[tuple[str, str], dict] = {}
+    dropped_imports = 0
     for path in paths:
         payload = json.loads(path.read_text(encoding="utf-8"))
         results = payload.get("result", {}).get("results") or payload.get("results", [])
@@ -65,14 +69,20 @@ def collect_new_entries(paths: list[Path]) -> list[dict]:
                 doc = entry.get("zh_doc") or ""
                 if not doc.strip():
                     continue
+                imports = [
+                    line for line in entry.get("imports") or [] if IMPORT_LINE_RE.match(line)
+                ]
+                dropped_imports += len(entry.get("imports") or []) - len(imports)
                 entries[(module, qualname)] = {
                     "module": module,
                     "qualname": qualname,
                     "doc": doc,
                     "return": annotation,
-                    "imports": list(entry.get("imports") or []),
+                    "imports": imports,
                     "source": "",
                 }
+    if dropped_imports:
+        print(f"dropped {dropped_imports} malformed import line(s)", file=sys.stderr)
     return list(entries.values())
 
 
