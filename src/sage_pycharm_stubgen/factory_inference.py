@@ -5,6 +5,8 @@ import importlib
 import inspect
 import io
 import keyword
+import types
+import typing
 import warnings
 from dataclasses import dataclass
 from typing import Any
@@ -304,11 +306,59 @@ def _probe(value: Any, calls: list[FactoryCall]) -> list[Any]:
     return results
 
 
+def _common_class_reference(classes: list[type[Any]]) -> str | None:
+    """Common MRO base of the given classes, as an importable reference."""
+    if not classes:
+        return None
+    for candidate in inspect.getmro(classes[0]):
+        if candidate is object:
+            continue
+        if all(candidate in inspect.getmro(other) for other in classes[1:]):
+            reference = _class_reference(candidate)
+            if reference is not None:
+                return reference
+    return "builtins.object"
+
+
+def _declared_return_reference(value: Any) -> str | None:
+    """Reference declared by the factory's ``__call__`` return annotation.
+
+    Sage upstream annotates the factory ``__call__`` (sagemath/sage #42670
+    and follow-ups), which is the ground truth for the return type.  When the
+    installed Sage exposes such an annotation, prefer it over runtime
+    probing; the probe path remains as the fallback for older Sage versions.
+
+    Union annotations (e.g. ``IntegerModRing_generic | IntegerRing_class``)
+    are collapsed to their common MRO base, mirroring what the probe would
+    infer, so the result always fits the single-reference stub declaration.
+    """
+    try:
+        hints = typing.get_type_hints(type(value).__call__)
+    except (AttributeError, TypeError, NameError):
+        return None
+    annotation = hints.get("return")
+    if annotation is None:
+        return None
+    origin = typing.get_origin(annotation)
+    if origin is types.UnionType or origin is typing.Union:
+        classes = [part for part in typing.get_args(annotation) if inspect.isclass(part)]
+        return _common_class_reference(classes) if classes else None
+    if inspect.isclass(annotation):
+        return _class_reference(annotation)
+    return None
+
+
 def infer_factory_returns(namespace: dict[str, Any]) -> tuple[list[FactoryInference], list[str]]:
     inferred: list[FactoryInference] = []
     unresolved: list[str] = []
     for name, value in sorted(namespace.items()):
         if not is_factory_candidate(name, value):
+            continue
+        # Prefer the source-declared return annotation (recent Sage); probing
+        # is the fallback for installations without the upstream annotations.
+        declared = _declared_return_reference(value)
+        if declared is not None:
+            inferred.append(FactoryInference(name, declared))
             continue
         results = _probe(value, _candidate_calls(name, value, namespace))
         return_type = _common_return_reference(results)
