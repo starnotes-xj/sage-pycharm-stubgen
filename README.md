@@ -43,6 +43,10 @@ This project:
   environment;
 - falls back from Cython source parsing to conservative runtime reflection when
   an individual extension cannot be parsed;
+- bridges base classes that stubgen-pyx drops for old-style Parent classes so
+  inherited members (`__getitem__`, `_first_ngens`, ...) stay reachable;
+- declares Sage-specific members that static analysis cannot discover
+  (`FiniteField.characteristic`, `Integer` arithmetic operators);
 - validates every generated stub before installation;
 - preserves existing Sage-owned or user-owned `.pyi` files;
 - tracks its own files in a manifest so updates and uninstallations only touch
@@ -95,8 +99,8 @@ does not overwrite pre-existing `.pyi` files that it does not own.
 
 The stubs then apply to every project using that interpreter. No custom
 PyCharm plugin is needed. For `.sage` files, PyCharm still needs an appropriate
-file-type association; this project provides Python type information rather
-than a Sage preparser language plugin.
+file-type association; see [Preparsing Sage syntax](#preparsing-sage-syntax)
+for converting Sage sugar to plain Python.
 
 ## Configure VS Code
 
@@ -112,8 +116,8 @@ the Pyright CLI separately when using Pylance.
 
 Associating `*.sage` with the Python language can provide ordinary Python API
 completion, but Pylance does not understand Sage preparser-only syntax such as
-`R.<x> = PolynomialRing(...)`. This project is a type-stub generator, not a
-complete `.sage` language server.
+`R.<x> = PolynomialRing(...)`. Convert such files with the
+[`preparse` command](#preparsing-sage-syntax) first.
 
 ## Update and uninstall
 
@@ -127,6 +131,44 @@ Remove only the stubs owned by this tool:
 
 ```bash
 sage-pycharm-stubgen --uninstall
+```
+
+## Preparsing Sage syntax
+
+Sage's preparser sugar (`R.<x> = GF(2)[]`, `F.<a> = GF(2^8, ...)`, `^` as
+power, `e^(-1)`) is only expanded in `.sage` files. A `.py` file using that
+syntax is invalid Python, so PyCharm cannot parse it at all, let alone index
+it. Convert a file to plain Python:
+
+```bash
+sage-pycharm-stubgen preparse test.py
+```
+
+The file is rewritten in place (atomically, keeping a
+`test.py.preparse-backup` copy of the original). The conversion expands
+generator declarations, powers, and numeric literals exactly as Sage itself
+would, and inserts `from sage.all import *` when Sage symbols are used
+without it — `.py` files do not get the implicit namespace injection that
+`.sage` files receive from the Sage command.
+
+Combined with the generated stubs, static analysis then resolves the
+converted file end to end: `F` is typed as `FiniteField`, `a` and `x` come
+from `_first_ngens`, and `from_integer`, `to_integer`, `polynomial`,
+`characteristic`, and friends all complete. Verified with Pyright: zero
+errors on a converted AES finite-field exercise.
+
+Options:
+
+- `--check` — only report files that still need conversion; exit code 1 if
+  any do (useful in scripts and CI).
+- `--output DIR` — write converted copies into `DIR` instead of rewriting in
+  place.
+- `--no-backup` — do not keep a `.preparse-backup` copy.
+
+Several files can be converted at once:
+
+```bash
+sage-pycharm-stubgen preparse a.py b.py c.py
 ```
 
 ## Advanced generation

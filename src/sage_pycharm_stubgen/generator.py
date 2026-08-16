@@ -141,6 +141,135 @@ def enhance_integer_mod_stub(path: Path) -> bool:
     return True
 
 
+def enhance_parent_chain(output_root: Path) -> bool:
+    """Bridge base classes that stubgen-pyx drops for old-style Parent classes.
+
+    ``parent_base.pyx`` declares ``cdef class ParentWithBase(Parent_old)`` and
+    ``parent_old.pyx`` declares ``cdef class Parent(parent.Parent)``, but the
+    generated stubs omit both base classes.  That cuts every Parent member
+    (``__getitem__``, ``_first_ngens``, ...) off from subclasses such as
+    ``FiniteField``.  Reconnect the chain with aliased imports.
+    """
+    bridges = [
+        (
+            output_root / "sage" / "structure" / "parent_old.pyi",
+            "^class Parent:$",
+            "from sage.structure.parent import Parent as _Parent\n"
+            "\n"
+            "class Parent(_Parent):",
+        ),
+        (
+            output_root / "sage" / "structure" / "parent_base.pyi",
+            "^class ParentWithBase:$",
+            "from sage.structure.parent_old import Parent as _ParentOld\n"
+            "\n"
+            "class ParentWithBase(_ParentOld):",
+        ),
+    ]
+    changed = False
+    for path, pattern, replacement in bridges:
+        if not path.is_file():
+            continue
+        original = path.read_text(encoding="utf-8")
+        content = re.sub(pattern, replacement, original, count=1, flags=re.MULTILINE)
+        if content != original:
+            path.write_text(content, encoding="utf-8")
+            changed = True
+    return changed
+
+
+def enhance_parent_getitem(output_root: Path) -> bool:
+    """Allow ``GF(2)['x']`` style generator access on Parent subclasses.
+
+    Sage's ``Parent.__getitem__`` accepts a string name to declare a
+    generator; the generated annotation ``int | slice`` rejects it.
+    """
+    path = output_root / "sage" / "structure" / "parent.pyi"
+    if not path.is_file():
+        return False
+    original = path.read_text(encoding="utf-8")
+    content = re.sub(
+        r"^(\s*)def __getitem__\(self, n: int \| slice\) -> ElementT:",
+        r"\1def __getitem__(self, n: Any) -> ElementT:",
+        original,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if content == original:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+_INTEGER_ARITHMETIC_DUNDERS = """\
+    def __add__(self, other: Any) -> Integer: ...
+    def __sub__(self, other: Any) -> Integer: ...
+    def __mul__(self, other: Any) -> Integer: ...
+    def __mod__(self, other: Any) -> Integer: ...
+    def __floordiv__(self, other: Any) -> Integer: ...
+    def __pow__(self, exp: Any, mod: Any = None) -> Any: ...
+    def __neg__(self) -> Integer: ...
+"""
+
+
+def enhance_integer_stub(path: Path) -> bool:
+    """Declare the arithmetic dunders that stubgen-pyx drops for Integer.
+
+    ``integer.pyx`` declares ``def __pow__(left, right, modulus)`` with
+    non-standard parameter names, which the converter skips, and Integer's
+    base class is a dynamically created category element class that static
+    analysis cannot follow.  Declare the common arithmetic operators directly
+    on Integer so expressions like ``Integer(2) ** Integer(8)`` type-check.
+    """
+    if not path.is_file():
+        return False
+    original = path.read_text(encoding="utf-8")
+    content = re.sub(
+        r"^(class Integer\([^)]*\)):",
+        r"\1\n" + _INTEGER_ARITHMETIC_DUNDERS,
+        original,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if content == original:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def enhance_finite_field_stub(path: Path) -> bool:
+    """Declare ``characteristic()`` on FiniteField.
+
+    The method is implemented on the concrete ``FiniteField_prime_modn`` /
+    ``FiniteField_givaro`` classes, which the ``GF`` factory's static return
+    type ``FiniteField`` cannot statically reach.
+    """
+    if not path.is_file():
+        return False
+    original = path.read_text(encoding="utf-8")
+    content = original
+    if "def characteristic" not in content:
+        content = re.sub(
+            r"^(class FiniteField\([^)]*\)):",
+            r"\1\n\n    def characteristic(self) -> Integer: ...",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    if "from sage.rings.integer import Integer" not in content:
+        content = re.sub(
+            r"^(from sage\.rings\.ring import Field)$",
+            r"\1\nfrom sage.rings.integer import Integer",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    if content == original:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
 def _lazy_import_target(value: Any) -> tuple[str, str] | None:
     cls = type(value)
     if cls.__module__ != "sage.misc.lazy_import" or cls.__name__ != "LazyImport":
@@ -459,6 +588,27 @@ def generate(
     if enhance_integer_mod_stub(integer_mod_stub):
         summary.enhanced.append(
             "sage.rings.finite_rings.integer_mod: Mod/IntegerMod/mod return types"
+        )
+
+    if enhance_parent_chain(output_root):
+        summary.enhanced.append(
+            "sage.structure.parent_base/parent_old: reconnected dropped base classes"
+        )
+    if enhance_parent_getitem(output_root):
+        summary.enhanced.append(
+            "sage.structure.parent: __getitem__ accepts generator names"
+        )
+    integer_stub = output_root / "sage" / "rings" / "integer.pyi"
+    if enhance_integer_stub(integer_stub):
+        summary.enhanced.append(
+            "sage.rings.integer: Integer arithmetic dunders"
+        )
+    finite_field_stub = (
+        output_root / "sage" / "rings" / "finite_rings" / "finite_field_base.pyi"
+    )
+    if enhance_finite_field_stub(finite_field_stub):
+        summary.enhanced.append(
+            "sage.rings.finite_rings.finite_field_base: FiniteField.characteristic"
         )
 
     if generate_all:

@@ -39,6 +39,10 @@ x.sqrt(all=True)
 - 为动态模块 `sage.all` 生成显式公开导出；
 - 根据当前 Sage 环境推断动态工厂函数可导入的返回类型；
 - 当单个 Cython 扩展无法解析时，从 Cython 源码解析逐级回退到保守的运行时反射；
+- 桥接 stubgen-pyx 为旧式 Parent 类遗漏的基类，让继承成员
+  （`__getitem__`、`_first_ngens` 等）保持可达；
+- 补声明静态分析无法发现的 Sage 专属成员（`FiniteField.characteristic`、
+  `Integer` 的算术运算符）；
 - 安装前验证每一个生成的存根；
 - 保留 Sage 自带或用户自己创建的 `.pyi` 文件；
 - 通过安装清单记录本工具拥有的文件，升级和卸载时不会删除其他文件。
@@ -100,8 +104,8 @@ x.sqrt(all=True)
 
 在 `x.` 后按 `Ctrl+Space`，应能看到 `sqrt` 方法和参数提示。
 
-对于 `.sage` 文件，PyCharm 仍需要合适的文件类型关联或用于运行 Sage preparser
-的工具。本项目提供的是 Python 类型信息，不是 Sage preparser 语言插件。
+对于 `.sage` 文件，PyCharm 仍需要合适的文件类型关联；`.py` 文件中的 Sage
+语法糖可以通过 [`preparse` 命令](#转换-sage-语法糖)转换为纯 Python。
 
 ## 配置 VS Code
 
@@ -116,8 +120,8 @@ x.sqrt(all=True)
 Pyright 命令行程序。
 
 把 `*.sage` 关联为 Python 文件后，可以获得普通 Python API 的补全，但 Pylance
-不理解 `R.<x> = PolynomialRing(...)` 等只有 Sage preparser 支持的语法。本项目
-是类型存根生成器，不是完整的 `.sage` 语言服务器。
+不理解 `R.<x> = PolynomialRing(...)` 等只有 Sage preparser 支持的语法。可以先用
+[`preparse` 命令](#转换-sage-语法糖)把这类文件转换为纯 Python。
 
 ## 更新与卸载
 
@@ -131,6 +135,39 @@ sage-pycharm-stubgen --install
 
 ```bash
 sage-pycharm-stubgen --uninstall
+```
+
+## 转换 Sage 语法糖
+
+Sage preparser 的语法糖（`R.<x> = GF(2)[]`、`F.<a> = GF(2^8, ...)`、`^` 表示
+幂、`e^(-1)`）只在 `.sage` 文件里被展开。使用这些语法的 `.py` 文件不是合法
+Python，PyCharm 根本无法解析，更不用说建立索引。用一条命令把文件转换为纯
+Python：
+
+```bash
+sage-pycharm-stubgen preparse test.py
+```
+
+文件会被原子地原地改写，并保留 `test.py.preparse-backup` 备份副本。转换会把
+生成元声明、幂运算和数字字面量展开成与 Sage 完全一致的语义；当文件中使用了
+Sage 符号却没有导入时，还会自动插入 `from sage.all import *`——`.py` 文件没有
+`.sage` 文件从 sage 命令获得的隐式命名空间注入。
+
+配合生成的存根，静态分析可以端到端解析转换后的文件：`F` 被识别为
+`FiniteField`，`a`、`x` 来自 `_first_ngens`，`from_integer`、`to_integer`、
+`polynomial`、`characteristic` 等方法全部可以补全。已用 Pyright 实测：一个
+AES 有限域练习文件转换后检查结果为 0 个错误。
+
+选项：
+
+- `--check` — 只报告仍需要转换的文件，有则退出码为 1（适合脚本和 CI）；
+- `--output DIR` — 把转换结果写入 `DIR`，不改动原文件；
+- `--no-backup` — 不保留 `.preparse-backup` 备份副本。
+
+一次可以转换多个文件：
+
+```bash
+sage-pycharm-stubgen preparse a.py b.py c.py
 ```
 
 ## 高级生成选项

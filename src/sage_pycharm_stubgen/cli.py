@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .generator import DEFAULT_PATTERNS, detect_sage_package, generate
 from .installer import install_stub_package, uninstall_stub_package
+from .preparser import preparse_path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,12 +76,65 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--verbose", action="store_true")
+
+    subparsers = parser.add_subparsers(dest="command")
+    preparse_parser = subparsers.add_parser(
+        "preparse",
+        help=(
+            "Rewrite Sage preparser syntax (R.<x> = GF(2)[], ^, e^(-1)) in "
+            ".py files into plain Python so static analysis can parse them"
+        ),
+    )
+    preparse_parser.add_argument("files", nargs="+", type=Path)
+    preparse_parser.add_argument(
+        "--output",
+        type=Path,
+        help="Write converted copies into this directory instead of rewriting in place",
+    )
+    preparse_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Only report files that need conversion; exit 1 if any do",
+    )
+    preparse_parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Do not keep a .preparse-backup copy of rewritten files",
+    )
     return parser
+
+
+def run_preparse(args: argparse.Namespace) -> int:
+    exit_code = 0
+    for path in args.files:
+        result = preparse_path(
+            path,
+            check_only=args.check,
+            backup=not args.no_backup,
+            output_dir=args.output,
+        )
+        if result.error:
+            print(f"Failed: {result.path}: {result.error}", file=sys.stderr)
+            exit_code = 2
+        elif result.changed:
+            if args.check:
+                print(f"Needs preparse: {result.path}")
+                exit_code = 1
+            else:
+                message = f"Preparsed: {result.path}"
+                if result.backup is not None:
+                    message += f" (backup: {result.backup})"
+                print(message)
+        else:
+            print(f"Clean: {result.path}")
+    return exit_code
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "preparse":
+        return run_preparse(args)
     if args.install and args.uninstall:
         parser.error("--install and --uninstall cannot be used together")
 

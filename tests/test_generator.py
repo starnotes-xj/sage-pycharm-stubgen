@@ -11,7 +11,11 @@ from pathlib import Path
 from sage_pycharm_stubgen.cli import build_parser
 from sage_pycharm_stubgen.generator import (
     discover_sources,
+    enhance_finite_field_stub,
     enhance_integer_mod_stub,
+    enhance_integer_stub,
+    enhance_parent_chain,
+    enhance_parent_getitem,
     render_sage_all_stub,
     render_runtime_module_stub,
 )
@@ -23,7 +27,7 @@ from sage_pycharm_stubgen.installer import (
 
 
 class GeneratorTests(unittest.TestCase):
-    def test_cli_exposes_only_install_and_uninstall_modes(self) -> None:
+    def test_cli_exposes_install_uninstall_and_preparse_modes(self) -> None:
         parser = build_parser()
         options = {
             option
@@ -39,6 +43,7 @@ class GeneratorTests(unittest.TestCase):
             parser.parse_args(["--install"]).output,
             Path(sys.prefix) / "sage_typings",
         )
+        self.assertIsNone(parser.parse_args(["--install"]).command)
 
     def test_discover_sources_honors_patterns_and_excludes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -76,6 +81,83 @@ def IntegerMod(parent, value): ...
         self.assertIn("def IntegerMod(parent, value) -> IntegerMod_abstract:", result)
         self.assertIn("def mod(n, m, parent=None) -> IntegerMod_abstract: ...", result)
         self.assertNotIn("mod = Mod", result)
+
+    def test_parent_chain_reconnects_dropped_base_classes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            structure = root / "sage" / "structure"
+            structure.mkdir(parents=True)
+            parent_old = structure / "parent_old.pyi"
+            parent_base = structure / "parent_base.pyi"
+            parent_old.write_text("class Parent:\n    def old(self): ...\n", encoding="utf-8")
+            parent_base.write_text("class ParentWithBase:\n    pass\n", encoding="utf-8")
+
+            changed = enhance_parent_chain(root)
+
+            self.assertTrue(changed)
+            old_text = parent_old.read_text(encoding="utf-8")
+            self.assertIn(
+                "from sage.structure.parent import Parent as _Parent", old_text
+            )
+            self.assertIn("class Parent(_Parent):", old_text)
+            base_text = parent_base.read_text(encoding="utf-8")
+            self.assertIn(
+                "from sage.structure.parent_old import Parent as _ParentOld", base_text
+            )
+            self.assertIn("class ParentWithBase(_ParentOld):", base_text)
+
+    def test_parent_getitem_accepts_generator_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            structure = root / "sage" / "structure"
+            structure.mkdir(parents=True)
+            parent = structure / "parent.pyi"
+            parent.write_text(
+                "class Parent[ElementT](CategoryObject):\n"
+                "    def __getitem__(self, n: int | slice) -> ElementT: ...\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_parent_getitem(root)
+
+            self.assertTrue(changed)
+            self.assertEqual(
+                parent.read_text(encoding="utf-8"),
+                "class Parent[ElementT](CategoryObject):\n"
+                "    def __getitem__(self, n: Any) -> ElementT: ...\n",
+            )
+
+    def test_integer_stub_gains_arithmetic_dunders(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "integer.pyi"
+            stub.write_text("class Integer(EuclideanDomainElement):\n    pass\n", encoding="utf-8")
+
+            changed = enhance_integer_stub(stub)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn(
+            "def __pow__(self, exp: Any, mod: Any = None) -> Any: ...", result
+        )
+        self.assertIn("def __mul__(self, other: Any) -> Integer: ...", result)
+
+    def test_finite_field_stub_gains_characteristic(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "finite_field_base.pyi"
+            stub.write_text(
+                "from sage.rings.ring import Field\n"
+                "class FiniteField(Field):\n    pass\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_finite_field_stub(stub)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn(
+            "from sage.rings.integer import Integer", result
+        )
+        self.assertIn("def characteristic(self) -> Integer: ...", result)
 
     def test_sage_all_stub_uses_explicit_imports_and_value_types(self) -> None:
         stub = render_sage_all_stub({"sqrt": math.sqrt, "pi": math.pi, "_hidden": 1})

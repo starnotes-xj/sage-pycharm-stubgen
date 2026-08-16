@@ -132,7 +132,21 @@ def _class_reference(value_type: type[Any], *, require_exported: bool = True) ->
         except (ImportError, OSError):
             return None
         if getattr(module, type_name, None) is not value_type:
-            return None
+            # Sage's dynamic "X_with_category" classes cannot be imported, but
+            # their static "X" base class in the same module can and carries
+            # the same API.  Referencing the static class keeps the inferred
+            # return type importable for stub generation.
+            static_name = type_name.removesuffix("_with_category")
+            static = getattr(module, static_name, None)
+            if (
+                static is not None
+                and static is not value_type
+                and inspect.isclass(static)
+                and issubclass(value_type, static)
+            ):
+                type_name = static_name
+            else:
+                return None
     return f"{module_name}.{type_name}"
 
 
