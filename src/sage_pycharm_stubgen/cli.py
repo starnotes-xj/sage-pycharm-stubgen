@@ -141,9 +141,10 @@ def build_parser() -> argparse.ArgumentParser:
     translate_parser = subparsers.add_parser(
         "translate-docs",
         help=(
-            "Machine-translate the remaining English stub docstrings into "
-            "Chinese and store them in a persistent cache (run once; the "
-            "cache ships to every user)"
+            "OPT-IN: machine-translate the remaining English stub docstrings "
+            "into Chinese and store them in a persistent cache.  Never runs "
+            "automatically during --install, so English-only users are "
+            "unaffected unless they invoke this command explicitly."
         ),
     )
     translate_parser.add_argument(
@@ -247,12 +248,17 @@ def run_translate_docs(args: argparse.Namespace) -> int:
         ]
         if args.limit is not None:
             pending = pending[: args.limit]
-        if pending:
-            print(f"Translating {len(pending)} docstrings...", flush=True)
-            translated, failed = translate_texts([doc for _, doc in pending])
+        total = len(pending)
+        done = 0
+        # Translate and persist in chunks so an interrupted run resumes from
+        # the cache instead of restarting from zero.
+        for start in range(0, total, 200):
+            chunk = pending[start : start + 200]
+            translated, failed = translate_texts([doc for _, doc in chunk])
             cache.data.update(translated)
-            print(f"Translated: {len(translated)}, failed: {failed}", flush=True)
             cache.save()
+            done += len(translated)
+            print(f"Progress: {done}/{total} translated, {failed} failed", flush=True)
 
     applied = apply_translations(stubs_root, cache.data)
     print(f"Applied: {applied}")
