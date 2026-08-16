@@ -1391,6 +1391,13 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回该元素在所在有限域中的一个平方根；若它不是平方元则抛出异常。\n\n参数:\n- ``extend`` -- 是否在扩域中求平方根（bool，默认 False）；当前未实现，非平方元时传 ``True`` 会抛出 NotImplementedError\n- ``all`` -- 是否返回全部平方根（bool，默认 False）；为 ``True`` 时返回包含所有平方根的列表，非平方元返回空列表\n\n返回:\nFiniteField_givaroElement -- 满足 ``r^2 == self`` 的平方根 r；当 ``all=True`` 时返回类型为 list，特征 2 中平方根唯一故列表只有一个元素，奇特征下为 ``[r, -r]``\n\n示例::\n\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=("a",)); a = F.gen()\n    sage: (a^2).sqrt()\n    a\n    sage: (a^2).sqrt()^2 == a^2\n    True\n    sage: F.zero().sqrt()\n    0\n    sage: (a^2).sqrt(all=True)\n    [a]\n    sage: G = GF(7^2, names=("c",)); c = G.gen()\n    sage: G(2).sqrt()\n    3\n    sage: (c^2).sqrt(all=True)\n    [c, 6*c]\n    sage: c.sqrt()\n    Traceback (most recent call last):\n    ...\n    ValueError: must be a perfect square',
             "return": 'FiniteField_givaroElement',
         },
+        "FiniteField_givaroElement.__pow__": {
+            "declare": "def __pow__(self, n, modulus=None) -> FiniteField_givaroElement",
+        },
+        "FiniteField_givaroElement.multiplicative_order": {
+            "declare": "def multiplicative_order(self) -> Integer",
+            "imports": ['from sage.rings.integer import Integer'],
+        },
     },
     "sage.rings.finite_rings.element_ntl_gf2e": {
         "FiniteField_ntl_gf2eElement.charpoly": {
@@ -1436,6 +1443,13 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回该元素多项式表示的汉明重量，即非零系数的个数。\n\n参数:\n  无\n\n返回:\nint -- 该元素写为 GF(2) 上多项式时非零系数的个数（Python 整数）\n\n示例::\n\n    sage: K = GF(2^16, names=("b",)); b = K.gen()\n    sage: b.weight()\n    1\n    sage: (b^2+1).weight()\n    2\n    sage: (b^3+b+1).weight()\n    3\n    sage: K.zero().weight()\n    0\n    sage: K.one().weight()\n    1',
             "return": 'int',
         },
+        "FiniteField_ntl_gf2eElement.__pow__": {
+            "declare": "def __pow__(self, n, modulus=None) -> FiniteField_ntl_gf2eElement",
+        },
+        "FiniteField_ntl_gf2eElement.multiplicative_order": {
+            "declare": "def multiplicative_order(self) -> Integer",
+            "imports": ['from sage.rings.integer import Integer'],
+        },
     },
     "sage.rings.finite_rings.element_pari_ffelt": {
         "FiniteFieldElement_pari_ffelt.lift": {
@@ -1446,6 +1460,13 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "FiniteFieldElement_pari_ffelt.log": {
             "doc": "计算离散对数：返回满足 base^x == self 的整数 x（self 以 base 为底的对数）。pari_ffelt 实现的有限域元素的 log 方法，算法为 PARI 的 fflog。\n\n参数:\n- ``base`` -- 有限域元素（非零），对数的底\n- ``order`` -- （可选）整数，base 的阶\n- ``check`` -- bool（默认 False）；为 True 时校验给定的 order 是否为 base 的阶的倍数，不是则抛 ValueError\n\n返回:\nInteger -- 满足 base^x == self 的整数 x，范围 0 <= x < base 的阶（x 是模 order(base) 的唯一解）；若 self 不在 <base> 生成的子群中则抛 ValueError（消息 'no logarithm exists'）。\n\n示例::\n\n    sage: k = FiniteField(next_prime(10^10)^2, 'u', implementation='pari_ffelt')\n    sage: u = k.gen()\n    sage: (u^37).log(u)\n    37\n    sage: u.log(u^7)\n    Traceback (most recent call last):\n    ...\n    ValueError: no logarithm exists",
             "return": 'Integer',
+            "imports": ['from sage.rings.integer import Integer'],
+        },
+        "FiniteFieldElement_pari_ffelt.__pow__": {
+            "declare": "def __pow__(self, n, modulus=None) -> FiniteFieldElement_pari_ffelt",
+        },
+        "FiniteFieldElement_pari_ffelt.multiplicative_order": {
+            "declare": "def multiplicative_order(self) -> Integer",
             "imports": ['from sage.rings.integer import Integer'],
         },
     },
@@ -1608,6 +1629,14 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回域中本原单位根的最大阶数，即 q-1（乘法群 F* 的阶）。\n\n返回:\nInteger -- q-1。\n\n示例::\n\n    sage: GF(7).zeta_order()\n    6',
             "return": 'Integer',
             "declare": 'def zeta_order(self) -> Integer',
+        },
+        "FiniteField._first_ngens": {
+            "declare": "def _first_ngens(self, n: int) -> tuple[FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt, ...]",
+            "imports": [
+                'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
+                'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
+                'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+            ],
         },
     },
     "sage.rings.finite_rings.finite_field_constructor": {

@@ -159,6 +159,38 @@ class EnrichStubFileTests(unittest.TestCase):
         self.assertEqual(summary.return_types_added, 1)
         compile(content, "sample.pyi", "exec")
 
+    def test_declare_with_imports_and_union_annotation(self) -> None:
+        stub = (
+            "from sage.rings.ring import Field\n\n\n"
+            "class FiniteField(Field):\n"
+            "    def characteristic(self) -> int: ...\n"
+        )
+        curated = {
+            "FiniteField._first_ngens": {
+                "declare": (
+                    "def _first_ngens(self, n: int) -> "
+                    "tuple[FiniteField_givaroElement | FiniteFieldElement_pari_ffelt, ...]"
+                ),
+                "imports": [
+                    "from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement",
+                    "from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt",
+                ],
+            }
+        }
+        content, summary = self._enrich(stub, None, curated)
+
+        self.assertIn(
+            "def _first_ngens(self, n: int) -> "
+            "tuple[FiniteField_givaroElement | FiniteFieldElement_pari_ffelt, ...]: ...",
+            content,
+        )
+        self.assertIn(
+            "from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement",
+            content,
+        )
+        self.assertEqual(summary.declarations_added, 1)
+        compile(content, "sample.pyi", "exec")
+
     def test_curated_element_union_return_with_imports(self) -> None:
         stub = (
             "from sage.rings.ring import Field\n\n\n"
