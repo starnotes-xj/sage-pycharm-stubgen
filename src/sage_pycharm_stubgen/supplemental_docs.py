@@ -1443,6 +1443,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'Integer',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "FiniteFieldElement_pari_ffelt.log": {
+            "doc": "计算离散对数：返回满足 base^x == self 的整数 x（self 以 base 为底的对数）。pari_ffelt 实现的有限域元素的 log 方法，算法为 PARI 的 fflog。\n\n参数:\n- ``base`` -- 有限域元素（非零），对数的底\n- ``order`` -- （可选）整数，base 的阶\n- ``check`` -- bool（默认 False）；为 True 时校验给定的 order 是否为 base 的阶的倍数，不是则抛 ValueError\n\n返回:\nInteger -- 满足 base^x == self 的整数 x，范围 0 <= x < base 的阶（x 是模 order(base) 的唯一解）；若 self 不在 <base> 生成的子群中则抛 ValueError（消息 'no logarithm exists'）。\n\n示例::\n\n    sage: k = FiniteField(next_prime(10^10)^2, 'u', implementation='pari_ffelt')\n    sage: u = k.gen()\n    sage: (u^37).log(u)\n    37\n    sage: u.log(u^7)\n    Traceback (most recent call last):\n    ...\n    ValueError: no logarithm exists",
+            "return": 'Integer',
+            "imports": ['from sage.rings.integer import Integer'],
+        },
     },
     "sage.rings.finite_rings.finite_field_base": {
         "FiniteField.absolute_degree": {
@@ -1502,12 +1507,24 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.from_integer": {
             "doc": "把整数 n 的 p 进制展开 a0 + a1*p + a2*p^2 + ... + ak*p^k 解释为多项式 a0 + a1*a + ... + ak*a^k 并在生成元 a 处求值，得到域元素。是元素方法 to_integer() 的逆运算（F.from_integer(e.to_integer()) == e）。\n\n参数:\n- ``n`` -- 整数，须满足 0 <= n < order()（越界时报错）\n- ``reverse`` -- bool（默认 False）；为 True 时先逆序系数再求值。注意：仅基类实现（pari_ffelt 路径）支持该参数，givaro/ntl 实现覆盖版本只接受 n\n\n返回:\n域元素 -- 与 n 的 p 进制数字逐位对应（小端）的元素；0x57 -> a^6 + a^4 + a^2 + a + 1。越界时 givaro/ntl 抛 TypeError（消息 'n must be between 0 and self.order()'）。\n\n示例::\n\n    sage: x = polygen(GF(2))\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    sage: F.from_integer(0x57)\n    a^6 + a^4 + a^2 + a + 1\n    sage: F.from_integer(0x57).to_integer() == 0x57\n    True\n    sage: F.from_integer(256)\n    Traceback (most recent call last):\n    ...\n    TypeError: n must be between 0 and self.order()",
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "imports": [
+                'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
+                'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
+                'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+            ],
         },
         "FiniteField.galois_group": {
             "doc": '返回该有限域的伽罗瓦群，即由 Frobenius 生成的循环自同构群。\n\n参数:\n（无参数）\n\n返回:\nAny -- 该域的自同构群（GaloisGroup_GF 类型），打印如 ``Galois group C8 of GF(2^8)``；可用 ``order()``、``gens()`` 等查询，元素为 Frobenius 的幂。\n\n示例::\n\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=("a",))\n    sage: F.galois_group()\n    Galois group C8 of GF(2^8)\n    sage: G = F.galois_group()\n    sage: G.order()\n    8\n    sage: list(G)\n    [1, Frob, Frob^2, Frob^3, Frob^4, Frob^5, Frob^6, Frob^7]',
         },
         "FiniteField.gen": {
             "doc": "返回有限域（在素域上）的生成元。有限域只有一个生成元，即满足 modulus()(gen()) == 0 的元素。\n\n参数:\n- ``n`` -- 整数，只接受 0（其他值无意义，有限域只有一个生成元）\n\n返回:\n域元素 -- 生成元；素数域 GF(p) 的生成元为 1。\n\n示例::\n\n    sage: x = polygen(GF(2))\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    sage: F.gen()\n    a\n    sage: GF(7).gen()\n    1",
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "imports": [
+                'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
+                'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
+                'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+            ],
         },
         "FiniteField.is_conway": {
             "doc": '判断该有限域是否由 Conway 多项式定义。\n\n参数:\n（无参数）\n\n返回:\nbool -- 由 Conway 多项式定义返回 True；使用自定义模数或素域返回 False。\n\n示例::\n\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=("a",))\n    sage: F.is_conway()\n    False\n    sage: GF(5^2, names=("d",)).is_conway()\n    True',
@@ -1529,6 +1546,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.multiplicative_generator": {
             "doc": "返回有限域乘法群 F* 的生成元（本原元），即乘法阶为 q-1 的元素。与 primitive_element() 含义相同。注意：Sage 给出的本原元可能随版本变化，且不一定等于 gen()。\n\n返回:\n域元素 -- 乘法群的生成元。\n\n示例::\n\n    sage: GF(997).multiplicative_generator()\n    7\n    sage: x = polygen(GF(2))\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    sage: F.multiplicative_generator()\n    a^4 + a + 1",
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "imports": [
+                'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
+                'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
+                'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+            ],
         },
         "FiniteField.ngens": {
             "doc": "返回有限域的生成元个数。有限域是单生成元的，恒返回 1。\n\n返回:\nint -- 恒为 1。\n\n示例::\n\n    sage: x = polygen(GF(2))\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    sage: F.ngens()\n    1",
@@ -1553,6 +1576,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.random_element": {
             "doc": "返回域中的一个随机元素。\n\n参数:\n- ``*args, **kwds`` -- 透传给底层向量空间 random_element() 的参数（如 prob=0 时以概率 0 取非零元，即恒返回 0；注意 prob 仅部分实现支持，givaro 实现会忽略它）\n\n返回:\n域元素 -- 随机元素（结果随机）。\n\n示例::\n\n    sage: GF(19^4, 'a').random_element(prob=0)\n    0",
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "imports": [
+                'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
+                'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
+                'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+            ],
         },
         "FiniteField.some_elements": {
             "doc": '返回该有限域的一批代表性元素，供单元测试等场景使用。\n\n参数:\n（无参数）\n\n返回:\nlist[Any] -- 该域中若干元素组成的列表（元素内容为固定选取，无特殊数学含义）。\n\n示例::\n\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=("a",))\n    sage: F.some_elements()\n    [a^7 + a^6 + a^4 + a^3 + a^2 + 1, a^6 + a^3 + a, a^7 + a^4 + 1, a^7 + a^4]',
