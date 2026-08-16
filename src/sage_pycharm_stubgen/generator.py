@@ -225,7 +225,7 @@ def enhance_integer_stub(path: Path) -> bool:
         return False
     original = path.read_text(encoding="utf-8")
     content = re.sub(
-        r"^(class Integer\([^)]*\)):",
+        r"^(class Integer\([^)]*\):)",
         r"\1\n" + _INTEGER_ARITHMETIC_DUNDERS,
         original,
         count=1,
@@ -250,7 +250,7 @@ def enhance_finite_field_stub(path: Path) -> bool:
     content = original
     if "def characteristic" not in content:
         content = re.sub(
-            r"^(class FiniteField\([^)]*\)):",
+            r"^(class FiniteField\([^)]*\):)",
             r"\1\n\n    def characteristic(self) -> Integer: ...",
             content,
             count=1,

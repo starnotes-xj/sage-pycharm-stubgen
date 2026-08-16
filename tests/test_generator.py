@@ -136,10 +136,14 @@ def IntegerMod(parent, value): ...
             result = stub.read_text(encoding="utf-8")
 
         self.assertTrue(changed)
+        self.assertIn("class Integer(EuclideanDomainElement):", result)
         self.assertIn(
             "def __pow__(self, exp: Any, mod: Any = None) -> Any: ...", result
         )
         self.assertIn("def __mul__(self, other: Any) -> Integer: ...", result)
+        import ast
+
+        ast.parse(result)  # the enhanced stub must stay valid Python
 
     def test_finite_field_stub_gains_characteristic(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -157,7 +161,11 @@ def IntegerMod(parent, value): ...
         self.assertIn(
             "from sage.rings.integer import Integer", result
         )
+        self.assertIn("class FiniteField(Field):", result)
         self.assertIn("def characteristic(self) -> Integer: ...", result)
+        import ast
+
+        ast.parse(result)  # the enhanced stub must stay valid Python
 
     def test_sage_all_stub_uses_explicit_imports_and_value_types(self) -> None:
         stub = render_sage_all_stub({"sqrt": math.sqrt, "pi": math.pi, "_hidden": 1})
