@@ -240,6 +240,29 @@ The pass also moves docstrings that stubgen-pyx emits as standalone string
 statements *after* `def ...: ...` into the function body, which is the only
 placement PyCharm's stub indexer associates with the function.
 
+### Machine-translating the remaining docs (opt-in)
+
+The curated layer covers the CTF-critical APIs; everything else keeps its
+English source docstring.  To additionally translate **all** remaining
+English docstrings into Chinese:
+
+```bash
+sage-pycharm-stubgen translate-docs
+```
+
+This is an **explicit, opt-in command** — it never runs automatically
+during `--install`, so English-only users are unaffected unless they invoke
+it.  Translations are stored in a persistent cache
+(`~/.sage-pycharm-stubgen/translations.json`), the run is resumable after
+interruptions, and re-applying the cache is instant:
+
+```bash
+sage-pycharm-stubgen translate-docs --apply-only
+```
+
+Machine translations are readable but unverified; the curated entries
+remain the only layer whose examples are executed against Sage.
+
 ## Advanced generation
 
 To generate a small test subset without installing it:

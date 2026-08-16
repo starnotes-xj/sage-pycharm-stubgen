@@ -223,6 +223,26 @@ PyCharm 的快速文档（Ctrl+Q）读取的是存根函数的文档字符串**�
 这一过程还会把 stubgen-pyx 生成在 `def ...: ...` 之后的独立字符串语句移入函数
 体——那是 PyCharm 存根索引器唯一认可的文档位置。
 
+### 批量翻译其余文档（可选，opt-in）
+
+curated 层覆盖 CTF 常用 API，其余方法保留英文源码文档。如需把**其余全部**
+英文文档也翻译成中文：
+
+```bash
+sage-pycharm-stubgen translate-docs
+```
+
+这是**显式的可选命令，绝不会在 `--install` 时自动执行**——只用英文的用户
+不运行它就不会被翻译。翻译结果保存在持久缓存
+（`~/.sage-pycharm-stubgen/translations.json`）中，中断后可断点续传，重新
+应用缓存是即时的：
+
+```bash
+sage-pycharm-stubgen translate-docs --apply-only
+```
+
+机器翻译可读但未经验证；curated 条目仍是唯一逐例在 Sage 中执行验证过的层。
+
 ## 高级生成选项
 
 如果只想生成一个较小的测试范围而不安装：
