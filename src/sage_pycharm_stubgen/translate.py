@@ -57,61 +57,112 @@ def _request_google_batch(texts: list[str], timeout: float = 20.0) -> dict[str, 
 
 _BAIDU_MAX_BYTES = 6000
 
+_BAIDU_LLM_ENDPOINT = "https://fanyi-api.baidu.com/ait/api/aiTextTranslate"
 
-def _baidu_translate_one(text: str, appid: str, secret: str, timeout: float = 20.0) -> str:
-    """Translate a single text through the Baidu general translation API."""
-    salt = str(random.randint(10000, 99999))
-    sign = hashlib.md5(f"{appid}{text}{salt}{secret}".encode("utf-8")).hexdigest()
-    data = urllib.parse.urlencode(
-        {"q": text, "from": "en", "to": "zh", "appid": appid, "salt": salt, "sign": sign}
-    ).encode("utf-8")
+# Default translation instruction for the LLM endpoint: keep math notation,
+# code identifiers and sage: doctest blocks verbatim; translate only the prose.
+BAIDU_REFERENCE = (
+    "这是 SageMath 的 API 技术文档：请保留数学符号、代码标识符、"
+    "``...`` 与 :meth: 等交叉引用标记，以及 sage: 示例代码块原样不动，"
+    "只把英文说明文字翻译成简体中文，采用技术文档风格。"
+)
+
+
+class BaiduRateError(RuntimeError):
+    """Baidu rate-limit style errors (54003/59004) — back off much longer."""
+
+
+def _baidu_translate_one(
+    text: str,
+    appid: str,
+    *,
+    secret: str | None = None,
+    api_key: str | None = None,
+    model_type: str = "llm",
+    reference: str = BAIDU_REFERENCE,
+    timeout: float = 20.0,
+) -> str:
+    """Translate a single text through the Baidu LLM text translation API."""
+    payload: dict[str, object] = {
+        "appid": appid,
+        "from": "en",
+        "to": "zh",
+        "q": text,
+        "model_type": model_type,
+        "reference": reference,
+    }
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    else:
+        salt = str(random.randint(10000, 99999))
+        payload["salt"] = salt
+        payload["sign"] = hashlib.md5(f"{appid}{text}{salt}{secret}".encode("utf-8")).hexdigest()
     request = urllib.request.Request(
-        "https://fanyi-api.baidu.com/api/trans/vip/translate",
-        data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        _BAIDU_LLM_ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if payload.get("error_code"):
-        raise RuntimeError(
-            f"Baidu translate error {payload.get('error_code')}: {payload.get('error_msg')}"
-        )
-    parts = [item["dst"] for item in payload.get("trans_result", [])]
+        result = json.loads(response.read().decode("utf-8"))
+    if result.get("error_code"):
+        code = str(result.get("error_code"))
+        message = result.get("error_msg")
+        if code in {"54003", "59004"}:
+            raise BaiduRateError(f"Baidu rate limit {code}: {message}")
+        raise RuntimeError(f"Baidu translate error {code}: {message}")
+    parts = [item["dst"] for item in result.get("trans_result", [])]
     return "".join(parts).strip()
 
 
 def _baidu_translate_segmented(
-    text: str, appid: str, secret: str, timeout: float = 20.0
+    text: str,
+    appid: str,
+    *,
+    secret: str | None = None,
+    api_key: str | None = None,
+    model_type: str = "llm",
+    reference: str = BAIDU_REFERENCE,
+    timeout: float = 20.0,
 ) -> str:
-    """Translate ``text``, splitting overlong inputs at the 6000-byte limit."""
-    if len(text.encode("utf-8")) <= _BAIDU_MAX_BYTES:
-        return _baidu_translate_one(text, appid, secret, timeout)
+    """Translate ``text``, splitting overlong inputs at the 6000-char limit."""
+    kwargs = dict(secret=secret, api_key=api_key, model_type=model_type, reference=reference)
+    if len(text) <= _BAIDU_MAX_BYTES:
+        return _baidu_translate_one(text, appid, timeout=timeout, **kwargs)
     segments: list[str] = []
     remaining = text
     while remaining:
         cut = _BAIDU_MAX_BYTES
-        while cut > 0:
-            candidate = remaining[:cut]
-            if len(candidate.encode("utf-8")) <= _BAIDU_MAX_BYTES:
-                break
+        while cut > 0 and len(remaining[:cut]) > _BAIDU_MAX_BYTES:
             cut -= 256
         if cut <= 0:
             return ""
-        segments.append(candidate)
+        segments.append(remaining[:cut])
         remaining = remaining[cut:]
     return "".join(
-        _baidu_translate_one(segment, appid, secret, timeout) for segment in segments
+        _baidu_translate_one(segment, appid, timeout=timeout, **kwargs)
+        for segment in segments
     )
 
 
 def _request_baidu_batch(
-    texts: list[str], appid: str, secret: str, timeout: float = 20.0
+    texts: list[str],
+    appid: str,
+    secret: str | None = None,
+    api_key: str | None = None,
+    model_type: str = "llm",
+    reference: str = BAIDU_REFERENCE,
+    timeout: float = 20.0,
 ) -> dict[str, str]:
-    """Translate each text individually through the Baidu API (1 QPS tier)."""
+    """Translate each text individually through the Baidu API."""
+    kwargs = dict(
+        secret=secret, api_key=api_key, model_type=model_type, reference=reference
+    )
     result: dict[str, str] = {}
     for text in texts:
         try:
-            translated = _baidu_translate_segmented(text, appid, secret, timeout)
+            translated = _baidu_translate_segmented(text, appid, timeout=timeout, **kwargs)
         except Exception:
             continue
         if translated:
@@ -120,8 +171,10 @@ def _request_baidu_batch(
 
 
 def _backoff_sleep(pause: float, attempt: int, error: BaseException | None = None) -> None:
-    """Sleep before a retry; HTTP 429 (rate limit) backs off much longer."""
-    if isinstance(error, urllib.error.HTTPError) and error.code == 429:
+    """Sleep before a retry; rate-limit errors back off much longer."""
+    if isinstance(error, BaiduRateError) or (
+        isinstance(error, urllib.error.HTTPError) and error.code == 429
+    ):
         time.sleep(30.0 + 10.0 * attempt + random.uniform(0, 5.0))
     else:
         time.sleep(pause * (2**attempt))
@@ -151,20 +204,28 @@ def translate_texts(
     backend: str = "google",
     appid: str | None = None,
     secret: str | None = None,
+    api_key: str | None = None,
+    model_type: str = "llm",
+    reference: str = BAIDU_REFERENCE,
 ) -> tuple[dict[str, str], int]:
     """Translate ``texts``; returns ``(translated, failed_count)``.
 
     ``backend="google"`` uses the free Google endpoint with batched
-    requests; ``backend="baidu"`` uses the Baidu general translation API
-    (``appid``/``secret``, one request per text — the standard tier is 1
-    QPS, so keep the caller's pacing gentle).  Transient errors are retried
-    with backoff, and callers resume from the persistent cache after any
+    requests; ``backend="baidu"`` uses the Baidu LLM text translation API
+    (``appid`` plus either a Bearer ``api_key`` or the ``secret`` for sign
+    auth).  Transient errors — including rate limits — are retried with
+    backoff, and callers resume from the persistent cache after any
     interruption.
     """
     if backend == "baidu":
-        if not appid or not secret:
-            raise ValueError("Baidu backend requires BAIDU_APPID and BAIDU_SECRET")
-        request_fn = lambda texts: _request_baidu_batch(texts, appid, secret)
+        if not appid:
+            raise ValueError("Baidu backend requires an appid")
+        if not api_key and not secret:
+            raise ValueError("Baidu backend requires an api_key or a secret")
+        request_fn = lambda texts: _request_baidu_batch(
+            texts, appid, secret=secret, api_key=api_key,
+            model_type=model_type, reference=reference,
+        )
         effective_batch = 1
     else:
         request_fn = _request_google_batch
@@ -176,6 +237,12 @@ def translate_texts(
         chunk = pending[start : start + effective_batch]
         result, _ = _try_translate(chunk, attempts, pause, request_fn)
         translated.update(result)
+        if effective_batch > 1:
+            # A batch whose round-trip broke (e.g. the separator was mangled)
+            # falls back to individual requests.
+            for single in [t for t in chunk if t not in translated]:
+                result, _ = _try_translate([single], attempts, pause, request_fn)
+                translated.update(result)
         time.sleep(pause)
     return translated, len(pending) - len(translated)
 

@@ -184,8 +184,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="google",
         help=(
             "Translation backend: 'google' (free endpoint, batched, may be "
-            "rate-limited) or 'baidu' (needs BAIDU_APPID/BAIDU_SECRET env "
-            "vars, 1 QPS standard tier)"
+            "rate-limited) or 'baidu' (LLM text translation API; needs "
+            "BAIDU_APPID plus BAIDU_API_KEY or BAIDU_SECRET env vars)"
         ),
     )
     translate_parser.add_argument(
@@ -274,17 +274,22 @@ def run_translate_docs(args: argparse.Namespace) -> int:
 
         backend_kwargs = {}
         if args.backend == "baidu":
-            backend_kwargs = {
-                "appid": os.environ.get("BAIDU_APPID"),
-                "secret": os.environ.get("BAIDU_SECRET"),
-            }
-            if not backend_kwargs["appid"] or not backend_kwargs["secret"]:
+            appid = os.environ.get("BAIDU_APPID")
+            api_key = os.environ.get("BAIDU_API_KEY")
+            secret = os.environ.get("BAIDU_SECRET")
+            if not appid or not (api_key or secret):
                 print(
-                    "The baidu backend needs BAIDU_APPID and BAIDU_SECRET "
+                    "The baidu backend needs BAIDU_APPID plus either "
+                    "BAIDU_API_KEY (Bearer auth) or BAIDU_SECRET (sign auth) "
                     "environment variables.",
                     file=sys.stderr,
                 )
                 return 2
+            backend_kwargs = {
+                "appid": appid,
+                "api_key": api_key,
+                "secret": secret,
+            }
         # Translate and persist in chunks so an interrupted run resumes from
         # the cache instead of restarting from zero.
         for start in range(0, total, 200):
