@@ -4,6 +4,8 @@
 
 > 以后写密码学 sage 脚本，不用再边写边查源码了。
 
+![stubgen 演示](docs/demo.gif)
+
 为 SageMath 生成并安装静态类型存根，让 PyCharm、Pyright、Jedi 等支持 Python
 的编辑器能够理解 `Mod`、`GF`、`PolynomialRing`、`matrix`、`vector` 等动态
 Sage API。
