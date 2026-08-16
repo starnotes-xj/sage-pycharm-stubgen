@@ -281,6 +281,8 @@ def translate_texts(
     backoff, and callers resume from the persistent cache after any
     interruption.
     """
+    translated: dict[str, str] = {}
+    pending = [t for t in dict.fromkeys(texts) if t not in translated and t.strip()]
     if backend == "baidu":
         if not appid:
             raise ValueError("Baidu backend requires an appid")
@@ -296,9 +298,6 @@ def translate_texts(
     else:
         request_fn = _request_google_batch
         effective_batch = batch_size
-
-    translated: dict[str, str] = {}
-    pending = [t for t in dict.fromkeys(texts) if t not in translated and t.strip()]
     for start in range(0, len(pending), effective_batch):
         chunk = pending[start : start + effective_batch]
         result, _ = _try_translate(chunk, attempts, pause, request_fn)
