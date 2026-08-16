@@ -2,6 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+> Writing crypto Sage scripts? Stop switching to the source for every method
+> name — completion and docs are right in the editor.
+
 Generate and install static type stubs for SageMath so that PyCharm, Pyright,
 Jedi, and other Python-aware editors can understand dynamic Sage APIs such as
 `Mod`, `GF`, `PolynomialRing`, `matrix`, and `vector`.
