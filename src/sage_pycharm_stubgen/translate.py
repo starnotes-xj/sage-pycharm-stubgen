@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import ast
 import json
+import random
 import re
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -51,42 +53,51 @@ def _request_google_batch(texts: list[str], timeout: float = 20.0) -> dict[str, 
     return {src: dst.strip() for src, dst in zip(texts, parts) if dst.strip()}
 
 
+def _backoff_sleep(pause: float, attempt: int, error: BaseException | None = None) -> None:
+    """Sleep before a retry; HTTP 429 (rate limit) backs off much longer."""
+    if isinstance(error, urllib.error.HTTPError) and error.code == 429:
+        time.sleep(30.0 + 10.0 * attempt + random.uniform(0, 5.0))
+    else:
+        time.sleep(pause * (2**attempt))
+
+
+def _try_translate(
+    texts: list[str], attempts: int, pause: float
+) -> tuple[dict[str, str], BaseException | None]:
+    last_error: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            return _request_google_batch(texts), None
+        except Exception as exc:  # noqa: BLE001 - network errors are expected
+            last_error = exc
+            _backoff_sleep(pause, attempt, exc)
+    return {}, last_error
+
+
 def translate_texts(
     texts: list[str],
     batch_size: int = 8,
-    pause: float = 0.4,
-    attempts: int = 3,
+    pause: float = 2.0,
+    attempts: int = 4,
 ) -> tuple[dict[str, str], int]:
     """Translate ``texts``; returns ``(translated, failed_count)``.
 
     Batches of ``batch_size`` go out as single requests; texts whose batch
-    round-trip breaks fall back to individual requests.  Transient errors are
-    retried with exponential backoff.
+    round-trip breaks fall back to individual requests.  Transient errors —
+    including Google's HTTP 429 rate limiting — are retried with backoff, so
+    the caller can resume from the persistent cache after any interruption.
     """
     translated: dict[str, str] = {}
     pending = [t for t in dict.fromkeys(texts) if t not in translated and t.strip()]
     for start in range(0, len(pending), batch_size):
         chunk = pending[start : start + batch_size]
-        for attempt in range(attempts):
-            try:
-                result = _request_google_batch(chunk)
-                if result:
-                    translated.update(result)
-                    break
-            except Exception:
-                pass
-            time.sleep(pause * (2**attempt))
+        result, _ = _try_translate(chunk, attempts, pause)
+        if result:
+            translated.update(result)
         leftover = [t for t in chunk if t not in translated]
         for single in leftover:
-            for attempt in range(attempts):
-                try:
-                    result = _request_google_batch([single])
-                    if result:
-                        translated.update(result)
-                        break
-                except Exception:
-                    pass
-                time.sleep(pause * (2**attempt))
+            result, _ = _try_translate([single], attempts, pause)
+            translated.update(result)
         time.sleep(pause)
     return translated, len(pending) - len(translated)
 
