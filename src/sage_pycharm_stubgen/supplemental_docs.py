@@ -3028,6 +3028,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回 self 与 right 的最小公倍数（lcm）。Integer 的 lcm 方法继承自本基类，底层调用 Integer._lcm。\n\n参数:\n- ``right`` -- 与 self 同环的元素（对整数就是另一个 Integer/int）\n\n返回:\nElement -- 非负最小公倍数；两个整数输入时返回 Integer\n\n示例::\n\n    sage: 60.lcm(150)\n    300',
             "return": 'Element',
         },
+        "CommutativeRingElement.inverse_mod": {
+            "doc": '返回 self 模 ``I`` 的乘法逆元 x，满足 self*x ≡ 1 (mod I)。有限域元素、整数、多项式等交换环元素都继承此方法（Integer 与 Polynomial 有自己的覆盖实现）。\n\n参数:\n- ``I`` -- 模（环的理想或元素）\n\n返回:\nCommutativeRingElement -- 模 I 下的逆元；逆不存在时抛 ZeroDivisionError\n\n示例::\n\n    sage: F = GF(2^8, \'a\'); a = F.gen()\n    sage: e = F.from_integer(0x57)\n    sage: (e * e.inverse_mod(a)) == F.one()\n    True\n    sage: ZZ(3).inverse_mod(ZZ(7))\n    5',
+            "return": 'CommutativeRingElement',
+        },
     },
     "sage.structure.parent": {
         "Parent.Hom": {
