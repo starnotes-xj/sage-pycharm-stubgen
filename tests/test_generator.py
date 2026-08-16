@@ -106,6 +106,23 @@ def IntegerMod(parent, value): ...
             )
             self.assertIn("class ParentWithBase(_ParentOld):", base_text)
 
+    def test_finite_field_stub_declares_characteristic(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "finite_field_base.pyi"
+            stub.write_text(
+                "from sage.rings.ring import Field\n\n\nclass FiniteField(Field):\n    pass\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_finite_field_stub(stub)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn("def characteristic(self) -> Integer: ...", result)
+        self.assertIn("from sage.rings.integer import Integer", result)
+        self.assertNotIn("from typing import Any", result)
+        compile(result, "finite_field_base.pyi", "exec")
+
     def test_parent_getitem_accepts_generator_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -291,6 +308,43 @@ def IntegerMod(parent, value): ...
                 (sage_package / "all.pyi").read_text(encoding="utf-8"),
                 "user_owned: int\n",
             )
+
+    def test_installer_takes_over_unmanaged_stub_with_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output = root / "generated" / "sage"
+            sage_package = root / "site-packages" / "sage"
+            output.mkdir(parents=True)
+            sage_package.mkdir(parents=True)
+            (sage_package / "all.py").write_text("answer = 42\n", encoding="utf-8")
+            (sage_package / "all.pyi").write_text(
+                "stale_foreign: int\n", encoding="utf-8"
+            )
+            (output / "all.pyi").write_text("generated: int\n", encoding="utf-8")
+
+            result = install_stub_package(
+                root / "generated", sage_package, "10.9", overwrite_unowned=True
+            )
+
+            self.assertEqual(result.preserved_existing_files, 0)
+            self.assertEqual(result.taken_over_files, 1)
+            self.assertEqual(
+                (sage_package / "all.pyi").read_text(encoding="utf-8"),
+                "generated: int\n",
+            )
+            self.assertEqual(
+                (sage_package / "all.pyi.sps-bak").read_text(encoding="utf-8"),
+                "stale_foreign: int\n",
+            )
+
+            removed = uninstall_stub_package(sage_package)
+
+            self.assertEqual(removed.restored_backups, 1)
+            self.assertEqual(
+                (sage_package / "all.pyi").read_text(encoding="utf-8"),
+                "stale_foreign: int\n",
+            )
+            self.assertFalse((sage_package / "all.pyi.sps-bak").exists())
 
 
 if __name__ == "__main__":

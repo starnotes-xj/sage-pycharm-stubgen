@@ -15,6 +15,8 @@ from types import ModuleType
 from typing import Any, Iterable
 
 from .factory_inference import FactoryInference, factory_return_map, infer_factory_returns
+from .docstring_enrich import EnrichmentSummary, enrich_stubs, _quote
+from .supplemental_docs import SUPPLEMENTAL_DOCS
 
 
 DEFAULT_PATTERNS = ("**/*.pyx",)
@@ -58,6 +60,7 @@ class GenerationSummary:
     factory_inferred: list[str] = field(default_factory=list)
     factory_unresolved: list[str] = field(default_factory=list)
     dynamic_unresolved: list[str] = field(default_factory=list)
+    docstrings: EnrichmentSummary | None = None
     failures: list[Failure] = field(default_factory=list)
 
     def write(self, path: Path) -> None:
@@ -242,7 +245,9 @@ def enhance_finite_field_stub(path: Path) -> bool:
 
     The method is implemented on the concrete ``FiniteField_prime_modn`` /
     ``FiniteField_givaro`` classes, which the ``GF`` factory's static return
-    type ``FiniteField`` cannot statically reach.
+    type ``FiniteField`` cannot statically reach.  Further members such as
+    ``degree``, ``zeta`` or ``_first_ngens`` are re-added by the docstring
+    enrichment pass through curated ``declare`` entries.
     """
     if not path.is_file():
         return False
@@ -357,7 +362,9 @@ def _qualified_import(reference: str, alias: str) -> str | None:
     return f"from {module_name} import {type_name} as {alias}"
 
 
-def _factory_declaration(name: str, value: Any, return_type: str) -> tuple[str, str] | None:
+def _factory_declaration(
+    name: str, value: Any, return_type: str, doc: str | None = None
+) -> tuple[str, str] | None:
     alias = f"_FactoryReturn_{name}"
     import_line = _qualified_import(return_type, alias)
     if import_line is None:
@@ -375,7 +382,27 @@ def _factory_declaration(name: str, value: Any, return_type: str) -> tuple[str, 
         compile(f"def _probe{signature}: ...\n", "<signature>", "exec")
     except (TypeError, ValueError, SyntaxError):
         signature = "(*args: Any, **kwargs: Any)"
+    if doc:
+        # The docstring becomes the body so PyCharm's Quick Documentation
+        # (Ctrl+Q) actually shows it.
+        return import_line, f"def {name}{signature} -> {alias}:\n    {_quote(doc)}"
     return import_line, f"def {name}{signature} -> {alias}: ..."
+
+
+def _factory_doc(name: str, value: Any) -> str | None:
+    """Docstring for a ``sage.all`` factory declaration.
+
+    Prefers the curated Chinese docs for the factory's defining module;
+    falls back to the live runtime docstring.
+    """
+    module_entries = SUPPLEMENTAL_DOCS.get(getattr(value, "__module__", ""), {})
+    entry = module_entries.get(name)
+    if entry and entry.get("doc"):
+        return entry["doc"]
+    try:
+        return inspect.getdoc(value)
+    except (AttributeError, TypeError):
+        return None
 
 
 def render_sage_all_stub(
@@ -393,7 +420,9 @@ def render_sage_all_stub(
         public_names.append(name)
         value = namespace[name]
         if name in factory_returns:
-            declaration = _factory_declaration(name, value, factory_returns[name])
+            declaration = _factory_declaration(
+                name, value, factory_returns[name], _factory_doc(name, value)
+            )
             if declaration is not None:
                 imports.append(declaration[0])
                 declarations.append(declaration[1])
@@ -512,6 +541,7 @@ def generate(
     excludes: Iterable[str] = (),
     include_private: bool = False,
     generate_all: bool = True,
+    use_runtime_docs: bool = True,
     verbose: bool = False,
 ) -> GenerationSummary:
     detected_package, sage_version = detect_sage_package()
@@ -610,6 +640,12 @@ def generate(
         summary.enhanced.append(
             "sage.rings.finite_rings.finite_field_base: FiniteField.characteristic"
         )
+
+    summary.docstrings = enrich_stubs(
+        output_root,
+        sage_package=package,
+        use_runtime=use_runtime_docs,
+    )
 
     if generate_all:
         (

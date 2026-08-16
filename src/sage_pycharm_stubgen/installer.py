@@ -17,6 +17,7 @@ class InstallationResult:
     installed_files: int
     removed_stale_files: int
     preserved_existing_files: int
+    taken_over_files: int
     manifest: Path
 
 
@@ -24,6 +25,7 @@ class InstallationResult:
 class UninstallResult:
     target_root: Path
     removed_files: int
+    restored_backups: int
 
 
 def _read_manifest(
@@ -95,12 +97,16 @@ def install_stub_package(
     output_root: Path,
     sage_package: Path,
     sage_version: str,
+    overwrite_unowned: bool = False,
 ) -> InstallationResult:
     """Install generated stubs next to Sage's runtime modules.
 
     PyCharm's WSL interpreter indexing reliably sees ``sage/foo.pyi`` beside
     ``sage/foo.py`` or ``sage/foo.so``.  A manifest prevents the installer from
-    overwriting or later removing files it does not own.
+    overwriting or later removing files it does not own; with
+    ``overwrite_unowned=True`` a pre-existing unowned ``.pyi`` on the same
+    path is taken over, after being backed up to ``<name>.pyi.sps-bak`` so an
+    uninstall can restore it.
     """
     source, generated_files = _validated_generated_files(output_root)
     target = _validated_sage_package(sage_package)
@@ -109,12 +115,19 @@ def install_stub_package(
 
     pending: list[tuple[Path, Path]] = []
     preserved_existing = 0
+    taken_over = 0
+    backups: dict[str, str] = {}
     for source_file in generated_files:
         relative = source_file.relative_to(source)
         destination = target / relative
         if destination.exists() and relative not in previously_owned:
-            preserved_existing += 1
-            continue
+            if not overwrite_unowned:
+                preserved_existing += 1
+                continue
+            backup = destination.with_name(destination.name + ".sps-bak")
+            shutil.copy2(destination, backup)
+            backups[relative.as_posix()] = backup.name
+            taken_over += 1
         pending.append((source_file, relative))
 
     installed: set[Path] = set()
@@ -147,6 +160,7 @@ def install_stub_package(
         "generated_from": str(output_root.resolve()),
         "installed_at": datetime.now(timezone.utc).isoformat(),
         "files": sorted(path.as_posix() for path in installed),
+        "backups": backups,
     }
     manifest.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -157,6 +171,7 @@ def install_stub_package(
         len(installed),
         removed_stale,
         preserved_existing,
+        taken_over,
         manifest,
     )
 
@@ -178,5 +193,17 @@ def uninstall_stub_package(sage_package: Path) -> UninstallResult:
             owned_file.unlink()
             removed += 1
             _remove_empty_parents(owned_file, target)
+    restored = 0
+    payload = _read_manifest(target)
+    backups = payload.get("backups", {})
+    if isinstance(backups, dict):
+        for relative, backup_name in backups.items():
+            if not isinstance(relative, str) or not isinstance(backup_name, str):
+                continue
+            owned_file = target / Path(relative)
+            backup = owned_file.with_name(backup_name)
+            if backup.is_file() and not owned_file.exists():
+                shutil.move(str(backup), str(owned_file))
+                restored += 1
     manifest.unlink()
-    return UninstallResult(target, removed)
+    return UninstallResult(target, removed, restored)

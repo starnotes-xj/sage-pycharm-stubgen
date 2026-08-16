@@ -50,11 +50,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not generate explicit exports for sage.all",
     )
     parser.add_argument(
+        "--no-runtime-docs",
+        action="store_true",
+        help=(
+            "Skip runtime docstring collection (importing every Sage module "
+            "takes minutes); keep source-extracted and curated docs only"
+        ),
+    )
+    parser.add_argument(
         "--install",
         action="store_true",
         help=(
             "Install generated .pyi files beside the current Sage runtime modules; "
             "recommended for PyCharm WSL interpreters (strict checks are automatic)"
+        ),
+    )
+    parser.add_argument(
+        "--overwrite-unowned",
+        action="store_true",
+        help=(
+            "With --install: take over pre-existing .pyi files that this tool does "
+            "not own on the same paths, backing each up to <name>.pyi.sps-bak "
+            "(restored by --uninstall). Use to replace stale third-party stubs"
         ),
     )
     parser.add_argument(
@@ -185,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
         excludes=args.exclude,
         include_private=args.include_private,
         generate_all=not args.no_all_stub,
+        use_runtime_docs=not args.no_runtime_docs,
         verbose=args.verbose,
     )
     print(f"SageMath: {summary.sage_version}")
@@ -220,11 +238,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         result = install_stub_package(
-            Path(summary.output_root), Path(summary.sage_package), summary.sage_version
+            Path(summary.output_root),
+            Path(summary.sage_package),
+            summary.sage_version,
+            overwrite_unowned=args.overwrite_unowned,
         )
         print(f"Installed: {result.installed_files}")
         if hasattr(result, "preserved_existing_files"):
             print(f"Preserved existing stubs: {result.preserved_existing_files}")
+        if hasattr(result, "taken_over_files"):
+            print(f"Taken over pre-existing stubs: {result.taken_over_files}")
         print(f"Stub target: {result.target_root}")
         print(f"Manifest: {result.manifest}")
     return 1 if summary.failed == summary.discovered and summary.discovered else 0

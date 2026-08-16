@@ -46,7 +46,12 @@ This project:
 - bridges base classes that stubgen-pyx drops for old-style Parent classes so
   inherited members (`__getitem__`, `_first_ngens`, ...) stay reachable;
 - declares Sage-specific members that static analysis cannot discover
-  (`FiniteField.characteristic`, `Integer` arithmetic operators);
+  (`FiniteField.characteristic`, `Integer` arithmetic operators,
+  `CategoryObject._first_ngens`);
+- enriches every stub with docstrings so PyCharm's Quick Documentation
+  (Ctrl+Q) explains what a function returns -- including curated Chinese
+  docs with verified examples for CTF-critical APIs such as `GF`,
+  `from_integer`/`to_integer`, `log`, `discrete_log`, `CRT`, and `xgcd`;
 - validates every generated stub before installation;
 - preserves existing Sage-owned or user-owned `.pyi` files;
 - tracks its own files in a manifest so updates and uninstallations only touch
@@ -133,6 +138,12 @@ Remove only the stubs owned by this tool:
 sage-pycharm-stubgen --uninstall
 ```
 
+If the environment already contains stale third-party `.pyi` files on the
+same paths (older stub generators leave them behind), the installer
+preserves them by default.  Take them over explicitly with
+`--install --overwrite-unowned`; each replaced file is backed up as
+`<name>.pyi.sps-bak` and restored by `--uninstall`.
+
 ## Preparsing Sage syntax
 
 Sage's preparser sugar (`R.<x> = GF(2)[]`, `F.<a> = GF(2^8, ...)`, `^` as
@@ -170,6 +181,32 @@ Several files can be converted at once:
 ```bash
 sage-pycharm-stubgen preparse a.py b.py c.py
 ```
+
+## Documentation enrichment
+
+PyCharm's Quick Documentation reads the docstring *body* of a stub function,
+so the generator repairs and fills docstrings during generation from three
+sources, in priority order:
+
+1. **Curated docs** (`supplemental_docs.py`) -- Chinese explanations with
+   verified `sage:` examples and precise return annotations for 500+
+   CTF-critical APIs (finite fields, polynomial rings, modular arithmetic,
+   elliptic curves, matrices, number-theory tools), every example executed
+   against the installed Sage before being written.  Regenerate the file
+   with `python tools/build_supplemental_docs.py <research-output.json>`
+   and merge new research with
+   `python tools/merge_supplemental_docs.py <research-output.json>`.
+2. **Source docstrings** -- extracted from the installed `.pyx` sources,
+   including `cpdef`/`cdef` functions whose Cython return types upgrade
+   `-> Any` where the stub's imports allow it.
+3. **Runtime docstrings** -- the live Sage environment is imported module by
+   module and `inspect.getdoc` fills what the sources leave out (inherited
+   and decorator-built docstrings).  This import sweep takes minutes;
+   disable it with `--no-runtime-docs`.
+
+The pass also moves docstrings that stubgen-pyx emits as standalone string
+statements *after* `def ...: ...` into the function body, which is the only
+placement PyCharm's stub indexer associates with the function.
 
 ## Advanced generation
 
