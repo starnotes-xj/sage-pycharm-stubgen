@@ -54,7 +54,7 @@ x.sqrt(all=True)
 ## 环境要求
 
 - 已安装在 Python 或 Conda 环境中的 SageMath
-- Python 3.10 或更高版本
+- Python 3.11 或更高版本
 - PyCharm 或 VS Code 使用同一个解释器，支持 WSL
 - PyCharm 中一等公民级别的 `.sage` 文件支持（独立文件类型、语法糖解析、隐式
   `sage.all` 命名空间）需要配套插件

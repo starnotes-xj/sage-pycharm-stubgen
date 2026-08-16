@@ -84,17 +84,10 @@ class InstallerTests(unittest.TestCase):
         self.assertLess(_version_tuple("0.7.0"), _version_tuple("99.0.0"))
 
     def test_package_version_matches_pyproject(self) -> None:
-        import re
+        import tomllib
 
         from sage_pycharm_stubgen import __version__
 
         pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
-        text = pyproject_path.read_text(encoding="utf-8")
-        # tomllib only entered the stdlib in 3.11; the CI matrix runs 3.10, so
-        # parse the [project] section directly instead of importing it.
-        project_section = text.split("[project]", 1)[1].split("\n[", 1)[0]
-        match = re.search(
-            r'^version\s*=\s*"([^"]+)"', project_section, re.MULTILINE
-        )
-        self.assertIsNotNone(match, "version missing in [project]")
-        self.assertEqual(__version__, match.group(1))
+        project = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        self.assertEqual(__version__, project["project"]["version"])

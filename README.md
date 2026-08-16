@@ -60,7 +60,7 @@ This project:
 ## Requirements
 
 - SageMath installed in a Python/Conda environment
-- Python 3.10 or newer
+- Python 3.11 or newer
 - PyCharm configured to use that same interpreter (WSL is supported)
 - For first-class `.sage` files in PyCharm (dedicated file type, Sage sugar
   parsing, implicit `sage.all` namespace): the companion
