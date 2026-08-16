@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sage-pycharm-stubgen"
-version = "0.7.1"
+version = "0.7.2"
 description = "Generate PyCharm-friendly type stubs from an installed SageMath package"
 readme = "README.md"
 requires-python = ">=3.11"
