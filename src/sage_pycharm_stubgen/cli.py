@@ -189,6 +189,12 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     translate_parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Parallel translation workers for the baidu backend (default: 4)",
+    )
+    translate_parser.add_argument(
         "--apply-only",
         action="store_true",
         help="Skip translating; only apply existing cache entries to the stubs",
@@ -297,6 +303,7 @@ def run_translate_docs(args: argparse.Namespace) -> int:
             translated, failed = translate_texts(
                 [doc for _, doc in chunk],
                 backend=args.backend,
+                workers=args.workers,
                 **backend_kwargs,
             )
             cache.data.update(translated)

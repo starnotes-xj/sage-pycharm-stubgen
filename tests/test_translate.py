@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from sage_pycharm_stubgen.translate import (
     TranslationCache,
+    _group_entries_by_marker,
+    _request_baidu_batch,
     apply_translations,
     iter_english_docstrings,
     translate_texts,
@@ -62,6 +64,60 @@ class TranslateTextsTests(unittest.TestCase):
             )
         self.assertEqual(failed, 0)
         self.assertEqual(set(translated), {"a", "b"})
+
+    def test_group_entries_by_marker_splits_groups(self) -> None:
+        entries = [
+            ("line 1", "译文一A"),
+            ("line 2", "译文一B"),
+            ("QXZ73M", "QXZ73M"),
+            ("other line", "译文二"),
+        ]
+        self.assertEqual(
+            _group_entries_by_marker(entries),
+            ["译文一A\n译文一B", "译文二"],
+        )
+
+    def test_baidu_batch_marker_grouping_maps_pack(self) -> None:
+        entries = [
+            ("first", "译文一"),
+            ("QXZ73M", "QXZ73M"),
+            ("second", "译文二"),
+        ]
+
+        def fake_entries(text, appid, **kwargs):
+            return entries
+
+        with patch(
+            "sage_pycharm_stubgen.translate._baidu_translate_entries",
+            side_effect=fake_entries,
+        ):
+            result = _request_baidu_batch(
+                ["doc one", "doc two"], "id", api_key="k", pause=0, workers=2
+            )
+        self.assertEqual(result, {"doc one": "译文一", "doc two": "译文二"})
+
+    def test_baidu_batch_marker_break_falls_back_to_singles(self) -> None:
+        def fake_entries(text, appid, **kwargs):
+            # The marker lines were dropped by the model.
+            return [("merged", "全部混在一起")]
+
+        def fake_segmented(text, appid, **kwargs):
+            return f"单条:{text[:6]}"
+
+        with (
+            patch(
+                "sage_pycharm_stubgen.translate._baidu_translate_entries",
+                side_effect=fake_entries,
+            ),
+            patch(
+                "sage_pycharm_stubgen.translate._baidu_translate_segmented",
+                side_effect=fake_segmented,
+            ),
+        ):
+            result = _request_baidu_batch(
+                ["doc one", "doc two"], "id", api_key="k", pause=0
+            )
+        self.assertEqual(result, {"doc one": "单条:doc on", "doc two": "单条:doc tw"})
 
 
 class TranslationCacheTests(unittest.TestCase):

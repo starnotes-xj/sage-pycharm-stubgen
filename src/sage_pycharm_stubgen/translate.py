@@ -67,13 +67,15 @@ BAIDU_REFERENCE = (
     "只把英文说明文字翻译成简体中文，采用技术文档风格。"
 )
 
-_BAIDU_SPLIT_MARK = "<<<SPLIT>>>"
-_BAIDU_SPLIT_JOIN = "\n<<<SPLIT>>>\n"
+# Opaque marker the LLM copies verbatim (it translated the previous
+# word-like "<<<SPLIT>>>" marker into "<<<拆分>>>", which broke mapping).
+_BAIDU_SPLIT_MARK = "QXZ73M"
+_BAIDU_SPLIT_JOIN = "\nQXZ73M\n"
 _BAIDU_MAX_PACK = 5000
 
 _BAIDU_SPLIT_REFERENCE = (
-    f"这是多段待翻译文本，段与段之间以 {_BAIDU_SPLIT_MARK} 分隔。"
-    "请逐段翻译，并原样保留分隔符。"
+    f"这是多段待翻译文本，段与段之间以单独一行 {_BAIDU_SPLIT_MARK} 分隔。"
+    "请逐段翻译，每段内保持原有换行结构，并原样保留该分隔行。"
 )
 
 
@@ -81,7 +83,7 @@ class BaiduRateError(RuntimeError):
     """Baidu rate-limit style errors (54003/59004) — back off much longer."""
 
 
-def _baidu_translate_one(
+def _baidu_translate_entries(
     text: str,
     appid: str,
     *,
@@ -90,8 +92,12 @@ def _baidu_translate_one(
     model_type: str = "llm",
     reference: str = BAIDU_REFERENCE,
     timeout: float = 20.0,
-) -> str:
-    """Translate a single text through the Baidu LLM text translation API."""
+) -> list[tuple[str, str]]:
+    """One LLM request; returns ``(src, dst)`` pairs, one per output line.
+
+    The endpoint splits both input and output per line, so this is the raw
+    alignment signal callers group with the marker line.
+    """
     payload: dict[str, object] = {
         "appid": appid,
         "from": "en",
@@ -121,8 +127,49 @@ def _baidu_translate_one(
         if code in {"54003", "59004"}:
             raise BaiduRateError(f"Baidu rate limit {code}: {message}")
         raise RuntimeError(f"Baidu translate error {code}: {message}")
-    parts = [item["dst"] for item in result.get("trans_result", [])]
-    return "".join(parts).strip()
+    return [
+        (item.get("src", ""), item.get("dst", ""))
+        for item in result.get("trans_result", [])
+    ]
+
+
+def _baidu_translate_one(
+    text: str,
+    appid: str,
+    *,
+    secret: str | None = None,
+    api_key: str | None = None,
+    model_type: str = "llm",
+    reference: str = BAIDU_REFERENCE,
+    timeout: float = 20.0,
+) -> str:
+    """Translate a single text through the Baidu LLM text translation API."""
+    return "".join(
+        dst
+        for _, dst in _baidu_translate_entries(
+            text,
+            appid,
+            secret=secret,
+            api_key=api_key,
+            model_type=model_type,
+            reference=reference,
+            timeout=timeout,
+        )
+    ).strip()
+
+
+def _group_entries_by_marker(entries: list[tuple[str, str]]) -> list[str]:
+    """Group LLM line entries into texts, split on the marker line."""
+    groups: list[list[str]] = []
+    current: list[str] = []
+    for src, dst in entries:
+        if src.strip() == _BAIDU_SPLIT_MARK:
+            groups.append(current)
+            current = []
+        else:
+            current.append(dst)
+    groups.append(current)
+    return ["\n".join(group).strip() for group in groups]
 
 
 def _baidu_translate_segmented(
@@ -188,49 +235,75 @@ def _request_baidu_batch(
     reference: str = BAIDU_REFERENCE,
     pause: float = 1.2,
     timeout: float = 20.0,
+    workers: int = 1,
 ) -> dict[str, str]:
-    """Translate texts through the Baidu LLM API, packing several per request."""
+    """Translate texts through the Baidu LLM API, packed by an opaque marker.
+
+    Packs are translated in parallel across ``workers`` threads; a pack whose
+    marker boundaries break falls back to one request per text, and every
+    failure is contained so one bad docstring cannot sink the run.
+    """
     common = dict(secret=secret, api_key=api_key, model_type=model_type)
+    packs = _pack_texts(texts)
     result: dict[str, str] = {}
-    for pack in _pack_texts(texts):
-        if len(pack) == 1:
-            try:
-                translated = _baidu_translate_segmented(
-                    pack[0], appid, reference=reference, timeout=timeout, **common
-                )
-            except Exception:
-                translated = ""
-            if translated:
-                result[pack[0]] = translated
-        else:
-            reference_batch = reference + " " + _BAIDU_SPLIT_REFERENCE
-            try:
-                joined = _baidu_translate_one(
-                    _BAIDU_SPLIT_JOIN.join(pack),
-                    appid,
-                    reference=reference_batch,
-                    timeout=timeout,
-                    **common,
-                )
-                parts = joined.split(_BAIDU_SPLIT_MARK)
-            except Exception:
-                parts = []
-            if len(parts) == len(pack):
-                for src, dst in zip(pack, parts):
-                    if dst.strip():
-                        result[src] = dst.strip()
+
+    def translate_pack(pack: list[str]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        try:
+            if len(pack) == 1:
+                try:
+                    translated = _baidu_translate_segmented(
+                        pack[0], appid, reference=reference, timeout=timeout, **common
+                    )
+                except Exception:
+                    translated = ""
+                if translated:
+                    out[pack[0]] = translated
             else:
-                # The split broke — fall back to per-text requests.
-                for single in pack:
-                    try:
-                        translated = _baidu_translate_segmented(
-                            single, appid, reference=reference, timeout=timeout, **common
-                        )
-                    except Exception:
-                        continue
-                    if translated:
-                        result[single] = translated
-        time.sleep(pause)
+                reference_batch = reference + " " + _BAIDU_SPLIT_REFERENCE
+                groups: list[str] = []
+                try:
+                    entries = _baidu_translate_entries(
+                        _BAIDU_SPLIT_JOIN.join(pack),
+                        appid,
+                        reference=reference_batch,
+                        timeout=timeout,
+                        **common,
+                    )
+                    groups = _group_entries_by_marker(entries)
+                except Exception:
+                    groups = []
+                if len(groups) == len(pack) and all(groups):
+                    for src, dst in zip(pack, groups):
+                        out[src] = dst
+                else:
+                    # The marker boundaries broke — fall back to per-text
+                    # requests.
+                    for single in pack:
+                        try:
+                            translated = _baidu_translate_segmented(
+                                single, appid, reference=reference, timeout=timeout, **common
+                            )
+                        except Exception:
+                            continue
+                        if translated:
+                            out[single] = translated
+            time.sleep(pause)
+        except Exception:
+            # Contain unexpected worker errors; the caller counts the text
+            # as failed instead of aborting the whole run.
+            pass
+        return out
+
+    if workers > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for partial in pool.map(translate_pack, packs):
+                result.update(partial)
+    else:
+        for pack in packs:
+            result.update(translate_pack(pack))
     return result
 
 
@@ -271,15 +344,17 @@ def translate_texts(
     api_key: str | None = None,
     model_type: str = "llm",
     reference: str = BAIDU_REFERENCE,
+    workers: int = 1,
 ) -> tuple[dict[str, str], int]:
     """Translate ``texts``; returns ``(translated, failed_count)``.
 
     ``backend="google"`` uses the free Google endpoint with batched
     requests; ``backend="baidu"`` uses the Baidu LLM text translation API
     (``appid`` plus either a Bearer ``api_key`` or the ``secret`` for sign
-    auth).  Transient errors — including rate limits — are retried with
-    backoff, and callers resume from the persistent cache after any
-    interruption.
+    auth), packing several texts per request and translating packs in
+    parallel across ``workers`` threads.  Transient errors — including rate
+    limits — are retried with backoff, and callers resume from the
+    persistent cache after any interruption.
     """
     translated: dict[str, str] = {}
     pending = [t for t in dict.fromkeys(texts) if t not in translated and t.strip()]
@@ -291,6 +366,7 @@ def translate_texts(
         request_fn = lambda texts: _request_baidu_batch(
             texts, appid, secret=secret, api_key=api_key,
             model_type=model_type, reference=reference, pause=pause,
+            workers=workers,
         )
         # The Baidu path packs several texts per request and paces itself,
         # so hand it the whole pending set at once.
