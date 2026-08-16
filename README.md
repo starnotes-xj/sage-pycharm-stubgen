@@ -252,16 +252,27 @@ English source docstring.  To additionally translate **all** remaining
 English docstrings into Chinese:
 
 ```bash
-sage-pycharm-stubgen translate-docs
+sage-pycharm-stubgen translate-docs --apply-only
 ```
 
 This is an **explicit, opt-in command** — it never runs automatically
 during `--install`, so English-only users are unaffected unless they invoke
-it.  Translations are stored in a persistent cache
-(`~/.sage-pycharm-stubgen/translations.json`), the run is resumable after
-interruptions, and re-applying the cache is instant:
+it.  It applies every translation from two sources, merged together:
+
+1. the **shared cache shipped inside the package** (the accumulated batch
+   translation of the whole Sage API, ~12k docstrings — instant, no
+   network needed; disable with `--no-bundled`), and
+2. your own persistent cache (`~/.sage-pycharm-stubgen/translations.json`),
+   which wins over the shipped one where they overlap.
+
+Docstrings missing from both caches can be translated on demand with a
+live backend (`--backend google`, or `--backend baidu` with
+`BAIDU_APPID`/`BAIDU_API_KEY` env vars; `--workers N` parallelizes the
+Baidu LLM requests).  Runs are resumable after interruptions, and
+re-applying the cache is instant:
 
 ```bash
+sage-pycharm-stubgen translate-docs
 sage-pycharm-stubgen translate-docs --apply-only
 ```
 

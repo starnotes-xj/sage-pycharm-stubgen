@@ -171,7 +171,15 @@ def build_parser() -> argparse.ArgumentParser:
     translate_parser.add_argument(
         "--bundled",
         type=Path,
-        help="Optional lower-priority bundled cache to merge first",
+        help=(
+            "Lower-priority bundled cache to merge first.  Defaults to the "
+            "translations.json shipped inside the package when present."
+        ),
+    )
+    translate_parser.add_argument(
+        "--no-bundled",
+        action="store_true",
+        help="Do not merge the cache shipped inside the package",
     )
     translate_parser.add_argument(
         "--limit",
@@ -263,8 +271,13 @@ def run_translate_docs(args: argparse.Namespace) -> int:
         stubs_root, _ = detect_sage_package()
 
     cache = TranslationCache(args.cache)
-    if args.bundled is not None:
-        cache.merge(args.bundled)
+    bundled = args.bundled
+    if bundled is None and not args.no_bundled:
+        shipped = Path(__file__).resolve().parent / "translations.json"
+        if shipped.is_file():
+            bundled = shipped
+    if bundled is not None:
+        cache.merge(bundled)
 
     if not args.apply_only:
         pending = [
