@@ -191,6 +191,26 @@ class EnrichStubFileTests(unittest.TestCase):
         self.assertEqual(summary.declarations_added, 1)
         compile(content, "sample.pyi", "exec")
 
+    def test_curated_return_may_reference_the_declared_class_itself(self) -> None:
+        stub = (
+            "class FiniteField_givaroElement:\n"
+            "    def __pow__(self, exp, other): ...\n"
+        )
+        curated = {
+            "FiniteField_givaroElement.__pow__": {
+                "return": "FiniteField_givaroElement",
+                "imports": [],
+            }
+        }
+        content, summary = self._enrich(stub, None, curated)
+
+        self.assertIn(
+            "def __pow__(self, exp, other) -> FiniteField_givaroElement:",
+            content,
+        )
+        self.assertEqual(summary.return_types_added, 1)
+        compile(content, "sample.pyi", "exec")
+
     def test_curated_element_union_return_with_imports(self) -> None:
         stub = (
             "from sage.rings.ring import Field\n\n\n"

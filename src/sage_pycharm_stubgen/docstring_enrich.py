@@ -460,6 +460,20 @@ def _annotation_needs_import(annotation: str, imported: set[str]) -> str | None:
     return None
 
 
+def _local_names(tree: ast.AST) -> set[str]:
+    """Names declared in the stub itself (classes and functions).
+
+    An annotation may legally reference them without an import — e.g. a
+    method returning its own class — so the import check must not reject
+    them.
+    """
+    return {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+
+
 def _collect_imports(tree: ast.AST) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
@@ -656,7 +670,9 @@ class _Planner:
             return None
         # Names imported by the curated entry itself count as known; the
         # imports are inserted into the stub together with the annotation.
-        known = self.imported
+        # Names declared in the stub itself (a method returning its own
+        # class) are known as well.
+        known = self.imported | _local_names(self.tree)
         if entry:
             for line in entry.get("imports", []):
                 match = re.match(r"^from\s+\S+\s+import\s+([^#]+)", line.strip())
@@ -761,6 +777,11 @@ class _Planner:
             self.summary.docstrings_attached += 1
         elif not body_clean:
             new_lines.append(parsed.indent + "    ...")
+        else:
+            # The def carried an inline ``...`` / ``pass`` body; the header
+            # rewrite cut it off, so keep it after the new header — a return
+            # upgrade without a docstring must still produce a valid stub.
+            new_lines[0] = f"{header} {body_clean}".rstrip()
         self.edits.extend((start, end, []) for start, end in body_removals)
         self.edits.append((node.lineno, node.lineno, new_lines))
 

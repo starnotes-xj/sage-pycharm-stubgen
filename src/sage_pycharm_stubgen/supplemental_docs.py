@@ -1392,10 +1392,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'FiniteField_givaroElement',
         },
         "FiniteField_givaroElement.__pow__": {
-            "declare": "def __pow__(self, n, modulus=None) -> FiniteField_givaroElement",
+            "doc": "计算域元素的整数次幂：返回 self^n。\n\n参数:\n- ``n`` -- 整数；支持负指数（返回逆元的 |n| 次幂），n = 0 返回 1\n\n返回:\nFiniteField_givaroElement -- self^n\n\n示例::\n\n    sage: K.<a> = GF(3^3, 'a')\n    sage: a^3 == a*a*a\n    True\n    sage: b = a+1\n    sage: b^(-1) == 1/b\n    True",
+            "return": "FiniteField_givaroElement",
         },
         "FiniteField_givaroElement.multiplicative_order": {
-            "declare": "def multiplicative_order(self) -> Integer",
+            "doc": "返回该非零元素的乘法阶：使 self^n == 1 的最小正整数 n。\n\n返回:\nInteger -- self 的乘法阶（零元素抛 ValueError）\n\n示例::\n\n    sage: K.<a> = GF(3^3, 'a')\n    sage: (a+1).multiplicative_order()\n    26",
+            "return": "Integer",
             "imports": ['from sage.rings.integer import Integer'],
         },
     },
@@ -1463,10 +1465,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "imports": ['from sage.rings.integer import Integer'],
         },
         "FiniteFieldElement_pari_ffelt.__pow__": {
-            "declare": "def __pow__(self, n, modulus=None) -> FiniteFieldElement_pari_ffelt",
+            "doc": "计算域元素的整数次幂：返回 self^n。\n\n参数:\n- ``n`` -- 整数；支持负指数（返回逆元的 |n| 次幂），n = 0 返回 1\n\n返回:\nFiniteFieldElement_pari_ffelt -- self^n\n\n示例::\n\n    sage: K.<a> = GF(2^8, 'a', implementation='pari_ffelt')\n    sage: (a+1)^(-1) == 1/(a+1)\n    True",
+            "return": "FiniteFieldElement_pari_ffelt",
         },
         "FiniteFieldElement_pari_ffelt.multiplicative_order": {
-            "declare": "def multiplicative_order(self) -> Integer",
+            "doc": "返回该非零元素的乘法阶：使 self^n == 1 的最小正整数 n。\n\n返回:\nInteger -- self 的乘法阶（零元素抛 ValueError）\n\n示例::\n\n    sage: K.<a> = GF(2^8, 'a', implementation='pari_ffelt')\n    sage: (a+1).multiplicative_order()\n    51",
+            "return": "Integer",
             "imports": ['from sage.rings.integer import Integer'],
         },
     },
