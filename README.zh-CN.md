@@ -56,9 +56,16 @@ x.sqrt(all=True)
 - 已安装在 Python 或 Conda 环境中的 SageMath
 - Python 3.10 或更高版本
 - PyCharm 或 VS Code 使用同一个解释器，支持 WSL
+- PyCharm 中一等公民级别的 `.sage` 文件支持（独立文件类型、语法糖解析、隐式
+  `sage.all` 命名空间）需要配套插件
+  [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
+  （PyCharm 2026.1+）；本工具安装的存根就是它的类型信息数据层
 
 所有安装命令都必须使用 Sage 的 Python 解释器运行。普通 Windows Python 无法
 检查安装在 WSL 中的 Sage 环境。
+
+中文 curated 文档、有限域元素类返回注解和降级安装保护都属于当前开发版本
+（`>= 0.7.0`，main 分支）；PyPI 发行版可能滞后。
 
 ## 安装
 
@@ -110,8 +117,12 @@ x.sqrt(all=True)
 按 `Ctrl+Q`（快速文档）可以查看它的说明、返回类型和示例。首次安装或升级后若
 文档没有生效，执行 **文件 → 使缓存失效/重新启动**。
 
-对于 `.sage` 文件，PyCharm 仍需要合适的文件类型关联；`.py` 文件中的 Sage
-语法糖可以通过 [`preparse` 命令](#转换-sage-语法糖)转换为纯 Python。
+对于 `.sage` 文件，`.py` 场景无需插件即可获得完整提示；如需一等公民的
+`.sage` 体验（独立文件类型、语法糖解析、隐式 `sage.all` 命名空间、`F.<a> =
+GF(2^8)` 完整类型），请安装配套插件
+[sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)；
+否则 `.py` 文件中的 Sage 语法糖可以通过 [`preparse` 命令](#转换-sage-语法糖)
+转换为纯 Python。
 
 ## 配置 VS Code
 
@@ -220,6 +231,22 @@ sage-pycharm-stubgen \
 函数可能根据参数值、插件、文件、网络状态或运行时创建的类选择返回类型。本工具
 采取的策略是：严格安装时，每个检测到的工厂函数都必须具有可导入的静态返回
 类型；如果一个工厂存在多种实现，则使用这些实现共同的、可以导入的基类。
+
+## 配套项目
+
+- [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support) —— 为
+  PyCharm 提供一等公民 `.sage` 文件支持的插件：独立 "Sage" 文件类型（Python
+  方言）、透明的 Sage 语法糖解析（`F.<a> = GF(2^8, ...)`）、静态分析可见的
+  隐式 `sage.all` 命名空间、运行配置（本机/WSL/Docker）和 Live Templates。
+  它消费本工具生成并安装的 `.pyi` 存根；所有类型信息与 curated 文档都保存在
+  本仓库（存根数据层），插件自身不携带任何 Sage 领域知识。
+- [JetBrains/intellij-community PR #3614](https://github.com/JetBrains/intellij-community/pull/3614) ——
+  通用的 `typeInformationGenerator` 扩展点，让 PyCharm 能发现、调用并刷新
+  本引擎（支持本机/WSL/Docker 的 Sage 解释器）。
+- [sagemath/sage PR #42670](https://github.com/sagemath/sage/pull/42670) 与
+  [#42672](https://github.com/sagemath/sage/pull/42672) —— Sage 上游为
+  `GF`/`Zmod` 工厂与 `FiniteField` 元素返回方法添加的注解；合入后本引擎将
+  优先使用这些源码声明的类型，而非运行时探测。
 
 ## 开发
 

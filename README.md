@@ -62,9 +62,18 @@ This project:
 - SageMath installed in a Python/Conda environment
 - Python 3.10 or newer
 - PyCharm configured to use that same interpreter (WSL is supported)
+- For first-class `.sage` files in PyCharm (dedicated file type, Sage sugar
+  parsing, implicit `sage.all` namespace): the companion
+  [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
+  plugin (PyCharm 2026.1+), which consumes the stubs installed here as its
+  type-information data layer
 
 Run all installation commands with Sage's Python interpreter. A normal Windows
 Python installation cannot inspect a Sage environment installed in WSL.
+
+The Chinese curated docs, the finite-field element-class return annotations,
+and the downgrade protection are part of the current development version
+(`>= 0.7.0`, main branch); the PyPI release may lag behind.
 
 ## Install
 
@@ -103,9 +112,12 @@ does not overwrite pre-existing `.pyi` files that it does not own.
 4. If an old error remains cached, use **File → Invalidate Caches / Restart**.
 
 The stubs then apply to every project using that interpreter. No custom
-PyCharm plugin is needed. For `.sage` files, PyCharm still needs an appropriate
-file-type association; see [Preparsing Sage syntax](#preparsing-sage-syntax)
-for converting Sage sugar to plain Python.
+PyCharm plugin is needed for `.py` files. For first-class `.sage` files (own
+file type, sugar-aware parsing, implicit `sage.all` namespace, typed
+`F.<a> = GF(2^8)` completion), install the companion
+[sage-ide-support](https://github.com/starnotes-xj/sage-ide-support) plugin;
+alternatively, see [Preparsing Sage syntax](#preparsing-sage-syntax) for
+converting Sage sugar to plain Python.
 
 Press Ctrl+Q on any Sage function name to see its description, return type,
 and examples (Chinese docs for 700+ common APIs); after a first install or
@@ -236,6 +248,25 @@ This tool instead requires every detected factory to have an importable static
 return type during strict installation. Factories with several implementations
 use a common importable base class whose members are valid for the observed
 implementations.
+
+## Companion projects
+
+- [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support) — a
+  PyCharm plugin giving `.sage` files first-class support: a dedicated "Sage"
+  file type (Python dialect), transparent Sage generator-sugar parsing
+  (`F.<a> = GF(2^8, ...)`), the runtime-injected `sage.all` namespace for
+  static analysis, run configurations (native/WSL/Docker) and live templates.
+  It consumes the `.pyi` stubs generated and installed by this tool; all type
+  information and curated documentation live here, in the stub data layer.
+- [JetBrains/intellij-community PR #3614](https://github.com/JetBrains/intellij-community/pull/3614) —
+  a generic `typeInformationGenerator` extension point that lets PyCharm
+  discover, invoke and refresh this engine for Sage interpreters
+  (local/WSL/Docker).
+- [sagemath/sage PR #42670](https://github.com/sagemath/sage/pull/42670) and
+  [#42672](https://github.com/sagemath/sage/pull/42672) — upstream Sage
+  annotations for the `GF`/`Zmod` factories and the `FiniteField`
+  element-returning methods; once merged, this engine prefers those
+  source-declared types over its runtime probing.
 
 ## Development
 
