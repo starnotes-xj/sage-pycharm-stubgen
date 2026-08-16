@@ -49,7 +49,9 @@ x.sqrt(all=True)
   过的示例；
 - 安装前验证每一个生成的存根；
 - 保留 Sage 自带或用户自己创建的 `.pyi` 文件；
-- 通过安装清单记录本工具拥有的文件，升级和卸载时不会删除其他文件。
+- 通过安装清单记录本工具拥有的文件，升级和卸载时不会删除其他文件，并拒绝
+  旧版本工具的降级覆盖安装；工厂返回类型优先采用 Sage 上游源码声明的注解
+  （sagemath/sage PR #42670/#42672），运行时探测作为旧版 Sage 的兜底。
 
 ## 环境要求
 
@@ -64,8 +66,8 @@ x.sqrt(all=True)
 所有安装命令都必须使用 Sage 的 Python 解释器运行。普通 Windows Python 无法
 检查安装在 WSL 中的 Sage 环境。
 
-中文 curated 文档、有限域元素类返回注解和降级安装保护都属于当前开发版本
-（`>= 0.7.0`，main 分支）；PyPI 发行版可能滞后。
+中文 curated 文档、有限域元素类返回注解和降级安装保护自 **0.7.0**（当前
+PyPI 发行版）起提供。
 
 ## 安装
 
@@ -157,6 +159,12 @@ sage-pycharm-stubgen --uninstall
 如果环境中已有旧工具残留的同名第三方 `.pyi` 文件，安装器默认会保留它们。
 需要用 `--install --overwrite-unowned` 显式接管：每个被替换的文件都会备份为
 `<名字>.pyi.sps-bak`，执行 `--uninstall` 时自动恢复。
+
+安装清单（manifest）会记录生成工具的版本。使用**更旧**版本的工具执行
+`--install` 会被拒绝——覆盖会悄悄丢失新版工具的文档增强（中文 curated 文档
+与返回注解）。请升级工具（`pip install -U sage-pycharm-stubgen`）或加
+`--force` 强制绕过。此外，中文 curated 文档表也会随安装落盘
+（`.sage-pycharm-stubgen-curated-docs.json`），作为审计与恢复副本。
 
 ## 转换 Sage 语法糖
 

@@ -55,7 +55,9 @@ This project:
 - validates every generated stub before installation;
 - preserves existing Sage-owned or user-owned `.pyi` files;
 - tracks its own files in a manifest so updates and uninstallations only touch
-  files owned by this tool.
+  files owned by this tool, refuses downgrade installs from older tool
+  versions, and prefers source-declared factory return annotations (Sage
+  upstream PRs #42670/#42672) over runtime probing.
 
 ## Requirements
 
@@ -72,8 +74,7 @@ Run all installation commands with Sage's Python interpreter. A normal Windows
 Python installation cannot inspect a Sage environment installed in WSL.
 
 The Chinese curated docs, the finite-field element-class return annotations,
-and the downgrade protection are part of the current development version
-(`>= 0.7.0`, main branch); the PyPI release may lag behind.
+and the downgrade protection ship since **0.7.0** (the current PyPI release).
 
 ## Install
 
@@ -160,6 +161,15 @@ same paths (older stub generators leave them behind), the installer
 preserves them by default.  Take them over explicitly with
 `--install --overwrite-unowned`; each replaced file is backed up as
 `<name>.pyi.sps-bak` and restored by `--uninstall`.
+
+The install manifest records the generator version.  Running `--install`
+with an **older** tool version than the one that produced the current
+stubs is refused — overwriting would silently lose the newer tool's
+documentation enrichment (curated Chinese docs and return annotations).
+Upgrade the tool (`pip install -U sage-pycharm-stubgen`) or pass
+`--force` to bypass.  The curated Chinese doc table is also shipped next
+to the installed stubs (`.sage-pycharm-stubgen-curated-docs.json`) as an
+audit/recovery artifact.
 
 ## Preparsing Sage syntax
 
