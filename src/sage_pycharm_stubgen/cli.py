@@ -7,6 +7,7 @@ from pathlib import Path
 from .generator import DEFAULT_PATTERNS, detect_sage_package, generate
 from .installer import install_stub_package, uninstall_stub_package
 from .preparser import preparse_path
+from .translate import USER_CACHE_DIR
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -137,6 +138,40 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print one JSON object per file on stdout (stable for IDE use)",
     )
+    translate_parser = subparsers.add_parser(
+        "translate-docs",
+        help=(
+            "Machine-translate the remaining English stub docstrings into "
+            "Chinese and store them in a persistent cache (run once; the "
+            "cache ships to every user)"
+        ),
+    )
+    translate_parser.add_argument(
+        "--stubs",
+        type=Path,
+        help="Stub tree to translate (default: the installed Sage package)",
+    )
+    translate_parser.add_argument(
+        "--cache",
+        type=Path,
+        default=USER_CACHE_DIR / "translations.json",
+        help="Translation cache file (default: ~/.sage-pycharm-stubgen/translations.json)",
+    )
+    translate_parser.add_argument(
+        "--bundled",
+        type=Path,
+        help="Optional lower-priority bundled cache to merge first",
+    )
+    translate_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Only translate the first N untranslated docstrings (for testing)",
+    )
+    translate_parser.add_argument(
+        "--apply-only",
+        action="store_true",
+        help="Skip translating; only apply existing cache entries to the stubs",
+    )
     return parser
 
 
@@ -188,11 +223,49 @@ def run_preparse(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def run_translate_docs(args: argparse.Namespace) -> int:
+    from .translate import (
+        TranslationCache,
+        apply_translations,
+        iter_english_docstrings,
+        translate_texts,
+    )
+
+    stubs_root = args.stubs
+    if stubs_root is None:
+        stubs_root, _ = detect_sage_package()
+
+    cache = TranslationCache(args.cache)
+    if args.bundled is not None:
+        cache.merge(args.bundled)
+
+    if not args.apply_only:
+        pending = [
+            (stub, doc)
+            for stub, doc in iter_english_docstrings(stubs_root)
+            if doc not in cache.data
+        ]
+        if args.limit is not None:
+            pending = pending[: args.limit]
+        if pending:
+            print(f"Translating {len(pending)} docstrings...", flush=True)
+            translated, failed = translate_texts([doc for _, doc in pending])
+            cache.data.update(translated)
+            print(f"Translated: {len(translated)}, failed: {failed}", flush=True)
+            cache.save()
+
+    applied = apply_translations(stubs_root, cache.data)
+    print(f"Applied: {applied}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "preparse":
         return run_preparse(args)
+    if args.command == "translate-docs":
+        return run_translate_docs(args)
     if args.install and args.uninstall:
         parser.error("--install and --uninstall cannot be used together")
 
