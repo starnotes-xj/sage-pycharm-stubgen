@@ -67,6 +67,15 @@ BAIDU_REFERENCE = (
     "只把英文说明文字翻译成简体中文，采用技术文档风格。"
 )
 
+_BAIDU_SPLIT_MARK = "<<<SPLIT>>>"
+_BAIDU_SPLIT_JOIN = "\n<<<SPLIT>>>\n"
+_BAIDU_MAX_PACK = 5000
+
+_BAIDU_SPLIT_REFERENCE = (
+    f"这是多段待翻译文本，段与段之间以 {_BAIDU_SPLIT_MARK} 分隔。"
+    "请逐段翻译，并原样保留分隔符。"
+)
+
 
 class BaiduRateError(RuntimeError):
     """Baidu rate-limit style errors (54003/59004) — back off much longer."""
@@ -146,6 +155,30 @@ def _baidu_translate_segmented(
     )
 
 
+def _pack_texts(texts: list[str]) -> list[list[str]]:
+    """Pack short texts into request groups under the per-request char limit."""
+    packs: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for text in texts:
+        if len(text) > _BAIDU_MAX_PACK:
+            if current:
+                packs.append(current)
+                current = []
+                size = 0
+            packs.append([text])  # overlong text goes alone (segmented later)
+            continue
+        if current and size + len(text) + len(_BAIDU_SPLIT_JOIN) > _BAIDU_MAX_PACK:
+            packs.append(current)
+            current = []
+            size = 0
+        current.append(text)
+        size += len(text) + len(_BAIDU_SPLIT_JOIN)
+    if current:
+        packs.append(current)
+    return packs
+
+
 def _request_baidu_batch(
     texts: list[str],
     appid: str,
@@ -153,20 +186,51 @@ def _request_baidu_batch(
     api_key: str | None = None,
     model_type: str = "llm",
     reference: str = BAIDU_REFERENCE,
+    pause: float = 1.2,
     timeout: float = 20.0,
 ) -> dict[str, str]:
-    """Translate each text individually through the Baidu API."""
-    kwargs = dict(
-        secret=secret, api_key=api_key, model_type=model_type, reference=reference
-    )
+    """Translate texts through the Baidu LLM API, packing several per request."""
+    common = dict(secret=secret, api_key=api_key, model_type=model_type)
     result: dict[str, str] = {}
-    for text in texts:
-        try:
-            translated = _baidu_translate_segmented(text, appid, timeout=timeout, **kwargs)
-        except Exception:
-            continue
-        if translated:
-            result[text] = translated
+    for pack in _pack_texts(texts):
+        if len(pack) == 1:
+            try:
+                translated = _baidu_translate_segmented(
+                    pack[0], appid, reference=reference, timeout=timeout, **common
+                )
+            except Exception:
+                translated = ""
+            if translated:
+                result[pack[0]] = translated
+        else:
+            reference_batch = reference + " " + _BAIDU_SPLIT_REFERENCE
+            try:
+                joined = _baidu_translate_one(
+                    _BAIDU_SPLIT_JOIN.join(pack),
+                    appid,
+                    reference=reference_batch,
+                    timeout=timeout,
+                    **common,
+                )
+                parts = joined.split(_BAIDU_SPLIT_MARK)
+            except Exception:
+                parts = []
+            if len(parts) == len(pack):
+                for src, dst in zip(pack, parts):
+                    if dst.strip():
+                        result[src] = dst.strip()
+            else:
+                # The split broke — fall back to per-text requests.
+                for single in pack:
+                    try:
+                        translated = _baidu_translate_segmented(
+                            single, appid, reference=reference, timeout=timeout, **common
+                        )
+                    except Exception:
+                        continue
+                    if translated:
+                        result[single] = translated
+        time.sleep(pause)
     return result
 
 
@@ -224,9 +288,11 @@ def translate_texts(
             raise ValueError("Baidu backend requires an api_key or a secret")
         request_fn = lambda texts: _request_baidu_batch(
             texts, appid, secret=secret, api_key=api_key,
-            model_type=model_type, reference=reference,
+            model_type=model_type, reference=reference, pause=pause,
         )
-        effective_batch = 1
+        # The Baidu path packs several texts per request and paces itself,
+        # so hand it the whole pending set at once.
+        effective_batch = len(pending) if pending else 1
     else:
         request_fn = _request_google_batch
         effective_batch = batch_size
