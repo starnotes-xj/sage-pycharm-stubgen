@@ -168,6 +168,16 @@ def enhance_parent_chain(output_root: Path) -> bool:
             "\n"
             "class ParentWithBase(_ParentOld):",
         ),
+        # RealField_class is callable (`RR(53)`) through Parent.__call__, but
+        # stubgen-pyx drops the base class, so `RR(...)` is flagged as
+        # "RealField_class object is not callable" by the IDE.
+        (
+            output_root / "sage" / "rings" / "real_mpfr.pyi",
+            "^class RealField_class:$",
+            "from sage.structure.parent import Parent\n"
+            "\n"
+            "class RealField_class(Parent):",
+        ),
     ]
     changed = False
     for path, pattern, replacement in bridges:

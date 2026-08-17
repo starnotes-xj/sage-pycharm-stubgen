@@ -91,6 +91,10 @@ def IntegerMod(parent, value): ...
             parent_base = structure / "parent_base.pyi"
             parent_old.write_text("class Parent:\n    def old(self): ...\n", encoding="utf-8")
             parent_base.write_text("class ParentWithBase:\n    pass\n", encoding="utf-8")
+            rings = root / "sage" / "rings"
+            rings.mkdir(parents=True)
+            real_mpfr = rings / "real_mpfr.pyi"
+            real_mpfr.write_text("class RealField_class:\n    pass\n", encoding="utf-8")
 
             changed = enhance_parent_chain(root)
 
@@ -105,6 +109,12 @@ def IntegerMod(parent, value): ...
                 "from sage.structure.parent_old import Parent as _ParentOld", base_text
             )
             self.assertIn("class ParentWithBase(_ParentOld):", base_text)
+            real_text = real_mpfr.read_text(encoding="utf-8")
+            self.assertIn("from sage.structure.parent import Parent", real_text)
+            self.assertIn("class RealField_class(Parent):", real_text)
+            # RR(1) needs Parent.__call__ to be reachable: the bridge must not
+            # rely on a module-level import later than the class head.
+            compile(real_text, "real_mpfr.pyi", "exec")
 
     def test_finite_field_stub_declares_characteristic(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
