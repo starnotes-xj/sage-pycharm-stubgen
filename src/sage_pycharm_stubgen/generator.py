@@ -251,13 +251,20 @@ def enhance_integer_stub(path: Path) -> bool:
 
 
 def enhance_finite_field_stub(path: Path) -> bool:
-    """Declare ``characteristic()`` on FiniteField.
+    """Declare ``characteristic()`` and a typed ``__iter__`` on FiniteField.
 
     The method is implemented on the concrete ``FiniteField_prime_modn`` /
     ``FiniteField_givaro`` classes, which the ``GF`` factory's static return
     type ``FiniteField`` cannot statically reach.  Further members such as
     ``degree``, ``zeta`` or ``_first_ngens`` are re-added by the docstring
     enrichment pass through curated ``declare`` entries.
+
+    ``__iter__`` is emitted without a return annotation by stubgen-pyx; the
+    IDE then infers the iteration element type through ``Parent.__getitem__``
+    and falls back to ``FiniteField`` itself, which makes the type checker
+    flag Sage generator-sugar assignments (``F.<a> = GF(...)``: the target's
+    element type vs the fallback) and mis-types ``for x in F`` loops.  A
+    finite field iterates its elements, so declare the union explicitly.
     """
     if not path.is_file():
         return False
@@ -275,6 +282,26 @@ def enhance_finite_field_stub(path: Path) -> bool:
         content = re.sub(
             r"^(from sage\.rings\.ring import Field)$",
             r"\1\nfrom sage.rings.integer import Integer",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    element_union = (
+        "FiniteField_givaroElement | FiniteField_ntl_gf2eElement | "
+        "FiniteFieldElement_pari_ffelt"
+    )
+    if f"def __iter__(self) -> Iterator[{element_union}]" not in content:
+        if "from typing import Iterator" not in content:
+            content = re.sub(
+                r"^(from typing import Any)$",
+                r"\1\nfrom typing import Iterator",
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        content = re.sub(
+            r"^(\s*)def __iter__\(self\):$",
+            rf"\1def __iter__(self) -> Iterator[{element_union}]:",
             content,
             count=1,
             flags=re.MULTILINE,
@@ -651,13 +678,6 @@ def generate(
         summary.enhanced.append(
             "sage.rings.integer: Integer arithmetic dunders"
         )
-    finite_field_stub = (
-        output_root / "sage" / "rings" / "finite_rings" / "finite_field_base.pyi"
-    )
-    if enhance_finite_field_stub(finite_field_stub):
-        summary.enhanced.append(
-            "sage.rings.finite_rings.finite_field_base: FiniteField.characteristic"
-        )
 
     summary.docstrings = enrich_stubs(
         output_root,
@@ -665,6 +685,17 @@ def generate(
         use_runtime=use_runtime_docs,
         doc_language=doc_language,
     )
+
+    # AFTER the docstring enrichment: that pass rewrites the import block, so
+    # an import added earlier (typing.Iterator for the typed __iter__) would be
+    # dropped again.
+    finite_field_stub = (
+        output_root / "sage" / "rings" / "finite_rings" / "finite_field_base.pyi"
+    )
+    if enhance_finite_field_stub(finite_field_stub):
+        summary.enhanced.append(
+            "sage.rings.finite_rings.finite_field_base: FiniteField.characteristic + typed __iter__"
+        )
 
     if generate_all:
         (

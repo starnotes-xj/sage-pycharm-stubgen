@@ -120,7 +120,8 @@ def IntegerMod(parent, value): ...
         with tempfile.TemporaryDirectory() as temp_dir:
             stub = Path(temp_dir) / "finite_field_base.pyi"
             stub.write_text(
-                "from sage.rings.ring import Field\n\n\nclass FiniteField(Field):\n    pass\n",
+                "from sage.rings.ring import Field\nfrom typing import Any\n\n\n"
+                "class FiniteField(Field):\n    def __iter__(self):\n        pass\n",
                 encoding="utf-8",
             )
 
@@ -130,7 +131,17 @@ def IntegerMod(parent, value): ...
         self.assertTrue(changed)
         self.assertIn("def characteristic(self) -> Integer: ...", result)
         self.assertIn("from sage.rings.integer import Integer", result)
-        self.assertNotIn("from typing import Any", result)
+        # The enhancer must not introduce a second `Any` import.
+        self.assertEqual(result.count("from typing import Any"), 1)
+        # The typed __iter__ keeps the IDE's iteration-element type at the
+        # element union instead of falling back to FiniteField itself (which
+        # mis-types `for x in F` loops and flags `F.<a> = GF(...)` sugar).
+        self.assertIn("from typing import Iterator", result)
+        self.assertIn(
+            "def __iter__(self) -> Iterator[FiniteField_givaroElement | "
+            "FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt]:",
+            result,
+        )
         compile(result, "finite_field_base.pyi", "exec")
 
     def test_parent_getitem_accepts_generator_names(self) -> None:
