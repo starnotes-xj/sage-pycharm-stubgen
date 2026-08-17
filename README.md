@@ -19,6 +19,23 @@ Root to every project.
 Tested with SageMath 10.9 on Python 3.13 in WSL. The generator discovers the
 installed Sage version at runtime instead of relying on a fixed symbol list.
 
+## Quick start
+
+Inside the Sage environment (WSL / native / Docker), run:
+
+```bash
+python -m pip install sage-pycharm-stubgen
+sage-pycharm-stubgen --install     # generates and installs the .pyi stubs
+```
+
+Then point PyCharm at that Sage interpreter (WSL SDK): completion and
+Ctrl+Q work in any project without extra Sources Roots, because the stubs
+sit next to the runtime modules.  For first-class `.sage` files (generator
+sugar, implicit `sage.all` namespace, run via the `sage` command), also
+install the [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
+plugin.  Optional full-Chinese docs:
+`sage-pycharm-stubgen translate-docs --apply-only`.
+
 ## What it fixes
 
 SageMath exposes many objects dynamically and ships a large amount of compiled

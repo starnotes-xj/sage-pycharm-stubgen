@@ -17,6 +17,21 @@ Sage API。
 目前已在 WSL 的 SageMath 10.9、Python 3.13 环境中测试。生成器会在运行时检查
 当前安装的 Sage 版本和内容，不依赖固定版本的符号列表。
 
+## 快速开始
+
+在 Sage 环境内（WSL / 本机 / Docker 均可）执行：
+
+```bash
+python -m pip install sage-pycharm-stubgen
+sage-pycharm-stubgen --install     # 生成并安装 .pyi 存根
+```
+
+然后把 PyCharm 指向该 Sage 解释器（WSL SDK）：存根就装在运行时模块旁边，
+无需为每个项目添加 Sources Root，补全与 Ctrl+Q 文档即可用。若要 `.sage`
+文件的一等支持（生成元语法糖、隐式 `sage.all` 命名空间、用 `sage` 命令
+运行），再安装 [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
+插件。可选全量中文文档：`sage-pycharm-stubgen translate-docs --apply-only`。
+
 ## 解决的问题
 
 SageMath 会动态导出许多对象，并且大量代码由 Cython 编译。因此静态分析器可能
