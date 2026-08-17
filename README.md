@@ -298,10 +298,25 @@ sage-pycharm-stubgen translate-docs --apply-only
 Machine translations are readable but unverified; the curated entries
 remain the only layer whose examples are executed against Sage.
 
+## Conformance check
+
+The curated layer patches return types that upstream Sage does not
+declare.  As upstream annotations land (the factory-annotation PRs), those
+patches become checkable claims:
+
+```bash
+sage-pycharm-stubgen conformance
+```
+
+For every curated return fix it reports whether the installed Sage source
+declares the same type (`ok`), disagrees (`conflict` — either the data
+layer is stale or the upstream annotation is wrong, both actionable), or
+declares nothing (`unannotated` — the patch is still needed).  `--json`
+emits one object per finding for automation.
+
 ## Advanced generation
 
 To generate a small test subset without installing it:
-
 ```bash
 sage-pycharm-stubgen \
   --pattern 'rings/finite_rings/integer_mod.pyx' \

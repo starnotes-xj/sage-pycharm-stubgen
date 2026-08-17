@@ -148,6 +148,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print one JSON object per file on stdout (stable for IDE use)",
     )
+    conformance_parser = subparsers.add_parser(
+        "conformance",
+        help=(
+            "Cross-check the curated return-type fixes against the "
+            "annotations declared in the installed Sage sources: reports "
+            "matches, conflicts (data layer disagrees with upstream) and "
+            "unannotated targets (the curated fix is still needed)"
+        ),
+    )
+    conformance_parser.add_argument(
+        "--source",
+        type=Path,
+        help="Installed Sage package root (default: auto-detected)",
+    )
+    conformance_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print one JSON object per finding (stable for automation)",
+    )
     translate_parser = subparsers.add_parser(
         "translate-docs",
         help=(
@@ -258,6 +277,40 @@ def run_preparse(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def run_conformance_cmd(args: argparse.Namespace) -> int:
+    from .conformance import count_source_annotations, run_conformance
+
+    source_root = args.source
+    if source_root is None:
+        source_root, _ = detect_sage_package()
+
+    findings = run_conformance(source_root)
+    counts = {"unannotated": 0, "ok": 0, "conflict": 0}
+    for finding in findings:
+        counts[finding.status] += 1
+
+    if args.json:
+        import json as _json
+
+        for finding in findings:
+            print(_json.dumps(finding.as_json(), ensure_ascii=False))
+        return 0
+
+    print(f"Sage source root: {source_root}")
+    print(f"Annotated callables in the shipped sources: {count_source_annotations(source_root)}")
+    print(
+        f"Curated return fixes checked: {len(findings)} "
+        f"(ok {counts['ok']}, unannotated {counts['unannotated']}, conflict {counts['conflict']})"
+    )
+    for finding in findings:
+        if finding.status == "conflict":
+            print(
+                f"CONFLICT {finding.module}.{finding.qualname}: "
+                f"curated={finding.curated!r} source={finding.annotation!r}"
+            )
+    return 0
+
+
 def run_translate_docs(args: argparse.Namespace) -> int:
     from .translate import (
         TranslationCache,
@@ -334,6 +387,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "preparse":
         return run_preparse(args)
+    if args.command == "conformance":
+        return run_conformance_cmd(args)
     if args.command == "translate-docs":
         return run_translate_docs(args)
     if args.install and args.uninstall:

@@ -263,6 +263,20 @@ sage-pycharm-stubgen translate-docs --apply-only
 
 机器翻译可读但未经验证；curated 条目仍是唯一逐例在 Sage 中执行验证过的层。
 
+## 一致性校验
+
+curated 数据层修补的是上游 Sage 未声明的返回类型。随着上游注解落地
+（工厂注解系列 PR），这些修补就变成可校验的断言：
+
+```bash
+sage-pycharm-stubgen conformance
+```
+
+对每条 curated 返回类型修补，报告已装 Sage 源码中是否声明了相同类型
+（`ok` 一致 / `conflict` 分歧——要么数据层过时、要么上游注解有误，两者
+都可行动 / `unannotated` 源码未声明——修补仍必需）。`--json` 可输出机器
+可读的逐条结果。
+
 ## 高级生成选项
 
 如果只想生成一个较小的测试范围而不安装：
