@@ -11,10 +11,16 @@ Generate and install static type stubs for SageMath so that PyCharm, Pyright,
 Jedi, and other Python-aware editors can understand dynamic Sage APIs such as
 `Mod`, `GF`, `PolynomialRing`, `matrix`, and `vector`.
 
-**No PyCharm plugin is required.** The generated `.pyi` files are installed
-next to the Sage runtime modules in the active Python environment, which makes
-them visible to PyCharm's WSL interpreter indexer without adding a Sources
-Root to every project.
+**No PyCharm plugin is required for the type information itself.** The
+generated `.pyi` files are installed next to the Sage runtime modules in the
+active Python environment, which makes them visible to PyCharm's WSL
+interpreter indexer without adding a Sources Root to every project.
+
+IDE *features* built on top of the stubs — first-class `.sage` files and
+**Sage postfix completion** (`expr.ZZ`, `.factor`, `.b2i`, ...) — live in the
+companion [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
+JetBrains plugin, not in this package (see
+[Configure PyCharm](#configure-pycharm)).
 
 Tested with SageMath 10.9 on Python 3.13 in WSL. The generator discovers the
 installed Sage version at runtime instead of relying on a fixed symbol list.
@@ -31,10 +37,10 @@ sage-pycharm-stubgen --install     # generates and installs the .pyi stubs
 Then point PyCharm at that Sage interpreter (WSL SDK): completion and
 Ctrl+Q work in any project without extra Sources Roots, because the stubs
 sit next to the runtime modules.  For first-class `.sage` files (generator
-sugar, implicit `sage.all` namespace, run via the `sage` command), also
-install the [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
-plugin.  Optional full-Chinese docs:
-`sage-pycharm-stubgen translate-docs --apply-only`.
+sugar, implicit `sage.all` namespace, run via the `sage` command) and Sage
+**postfix completion** (`expr.ZZ` / `.factor` / `.b2i` ...), also install the
+[sage-ide-support](https://github.com/starnotes-xj/sage-ide-support) plugin.
+Optional full-Chinese docs: `sage-pycharm-stubgen translate-docs --apply-only`.
 
 ## What it fixes
 
@@ -87,7 +93,8 @@ This project:
 - Python 3.11 or newer
 - PyCharm configured to use that same interpreter (WSL is supported)
 - For first-class `.sage` files in PyCharm (dedicated file type, Sage sugar
-  parsing, implicit `sage.all` namespace): the companion
+  parsing, implicit `sage.all` namespace) and Sage postfix completion
+  (`expr.ZZ` / `.b2i` ...): the companion
   [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
   plugin (PyCharm 2026.1+), which consumes the stubs installed here as its
   type-information data layer
@@ -144,7 +151,9 @@ does not overwrite pre-existing `.pyi` files that it does not own.
 The stubs then apply to every project using that interpreter. No custom
 PyCharm plugin is needed for `.py` files. For first-class `.sage` files (own
 file type, sugar-aware parsing, implicit `sage.all` namespace, typed
-`F.<a> = GF(2^8)` completion), install the companion
+`F.<a> = GF(2^8)` completion) and Sage postfix completion (`expr.ZZ`,
+`.factor`, `.b2i`, ... — configurable in **Settings → Editor → Postfix
+Completion**), install the companion
 [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support) plugin;
 alternatively, see [Preparsing Sage syntax](#preparsing-sage-syntax) for
 converting Sage sugar to plain Python.
@@ -343,9 +352,11 @@ implementations.
   PyCharm plugin giving `.sage` files first-class support: a dedicated "Sage"
   file type (Python dialect), transparent Sage generator-sugar parsing
   (`F.<a> = GF(2^8, ...)`), the runtime-injected `sage.all` namespace for
-  static analysis, run configurations (native/WSL/Docker) and live templates.
-  It consumes the `.pyi` stubs generated and installed by this tool; all type
-  information and curated documentation live here, in the stub data layer.
+  static analysis, run configurations (native/WSL/Docker), live templates,
+  and Sage postfix completion (`expr.ZZ` / `.factor` / `.euler_phi` / `.b2i`
+  ... with configurable templates).  It consumes the `.pyi` stubs generated
+  and installed by this tool; all type information and curated documentation
+  live here, in the stub data layer.
 - [JetBrains/intellij-community PR #3614](https://github.com/JetBrains/intellij-community/pull/3614) —
   a generic `typeInformationGenerator` extension point that lets PyCharm
   discover, invoke and refresh this engine for Sage interpreters

@@ -10,9 +10,14 @@
 的编辑器能够理解 `Mod`、`GF`、`PolynomialRing`、`matrix`、`vector` 等动态
 Sage API。
 
-**不需要安装 PyCharm 插件。** 生成的 `.pyi` 文件会安装到当前 Python 环境中
-对应的 Sage 运行时模块旁边，因此 PyCharm 的 WSL 解释器可以直接建立索引，
-不需要在每个项目中单独添加 Sources Root。
+**类型信息本身不需要安装 PyCharm 插件。** 生成的 `.pyi` 文件会安装到当前
+Python 环境中对应的 Sage 运行时模块旁边，因此 PyCharm 的 WSL 解释器可以直接
+建立索引，不需要在每个项目中单独添加 Sources Root。
+
+构建在存根之上的 IDE 功能——一等公民 `.sage` 文件与 **Sage 后缀补全**
+（`expr.ZZ`、`.factor`、`.b2i` 等）——位于配套
+[sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
+JetBrains 插件中，不在本包里（详见[配置 PyCharm](#配置-pycharm)）。
 
 目前已在 WSL 的 SageMath 10.9、Python 3.13 环境中测试。生成器会在运行时检查
 当前安装的 Sage 版本和内容，不依赖固定版本的符号列表。
@@ -29,7 +34,8 @@ sage-pycharm-stubgen --install     # 生成并安装 .pyi 存根
 然后把 PyCharm 指向该 Sage 解释器（WSL SDK）：存根就装在运行时模块旁边，
 无需为每个项目添加 Sources Root，补全与 Ctrl+Q 文档即可用。若要 `.sage`
 文件的一等支持（生成元语法糖、隐式 `sage.all` 命名空间、用 `sage` 命令
-运行），再安装 [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
+运行）和 Sage **后缀补全**（`expr.ZZ` / `.factor` / `.b2i` 等），再安装
+[sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
 插件。可选全量中文文档：`sage-pycharm-stubgen translate-docs --apply-only`。
 
 ## 解决的问题
@@ -78,7 +84,7 @@ x.sqrt(all=True)
 - Python 3.11 或更高版本
 - PyCharm 或 VS Code 使用同一个解释器，支持 WSL
 - PyCharm 中一等公民级别的 `.sage` 文件支持（独立文件类型、语法糖解析、隐式
-  `sage.all` 命名空间）需要配套插件
+  `sage.all` 命名空间）与 Sage 后缀补全（`expr.ZZ` / `.b2i` 等）需要配套插件
   [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)
   （PyCharm 2026.1+）；本工具安装的存根就是它的类型信息数据层
 
@@ -145,7 +151,8 @@ x.sqrt(all=True)
 
 对于 `.sage` 文件，`.py` 场景无需插件即可获得完整提示；如需一等公民的
 `.sage` 体验（独立文件类型、语法糖解析、隐式 `sage.all` 命名空间、`F.<a> =
-GF(2^8)` 完整类型），请安装配套插件
+GF(2^8)` 完整类型）与 Sage 后缀补全（`expr.ZZ`、`.factor`、`.b2i` 等，
+可在 **设置 → 编辑器 → 后缀补全** 中自定义），请安装配套插件
 [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support)；
 否则 `.py` 文件中的 Sage 语法糖可以通过 [`preparse` 命令](#转换-sage-语法糖)
 转换为纯 Python。
@@ -303,9 +310,10 @@ sage-pycharm-stubgen \
 - [sage-ide-support](https://github.com/starnotes-xj/sage-ide-support) —— 为
   PyCharm 提供一等公民 `.sage` 文件支持的插件：独立 "Sage" 文件类型（Python
   方言）、透明的 Sage 语法糖解析（`F.<a> = GF(2^8, ...)`）、静态分析可见的
-  隐式 `sage.all` 命名空间、运行配置（本机/WSL/Docker）和 Live Templates。
-  它消费本工具生成并安装的 `.pyi` 存根；所有类型信息与 curated 文档都保存在
-  本仓库（存根数据层），插件自身不携带任何 Sage 领域知识。
+  隐式 `sage.all` 命名空间、运行配置（本机/WSL/Docker）、Live Templates 和
+  Sage 后缀补全（`expr.ZZ` / `.factor` / `.euler_phi` / `.b2i` 等，模板可
+  自定义）。它消费本工具生成并安装的 `.pyi` 存根；所有类型信息与 curated
+  文档都保存在本仓库（存根数据层），插件自身不携带任何 Sage 领域知识。
 - [JetBrains/intellij-community PR #3614](https://github.com/JetBrains/intellij-community/pull/3614) ——
   通用的 `typeInformationGenerator` 扩展点，让 PyCharm 能发现、调用并刷新
   本引擎（支持本机/WSL/Docker 的 Sage 解释器）。
