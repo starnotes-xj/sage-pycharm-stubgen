@@ -79,7 +79,9 @@ Run all installation commands with Sage's Python interpreter. A normal Windows
 Python installation cannot inspect a Sage environment installed in WSL.
 
 The Chinese curated docs, the finite-field element-class return annotations,
-and the downgrade protection ship since **0.7.0** (the current PyPI release).
+and the downgrade protection ship since **0.7.0**; **0.8.0** adds the
+opt-in machine-translation layer (a bundled shared cache plus the
+`translate-docs` command below).
 
 **Prefer English docs?** Run `sage-pycharm-stubgen --doc-language en
 --install`: the curated Chinese docstrings are skipped (the original

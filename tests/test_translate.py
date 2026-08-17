@@ -9,6 +9,7 @@ from sage_pycharm_stubgen.translate import (
     TranslationCache,
     _group_entries_by_marker,
     _request_baidu_batch,
+    _restore_code_blocks,
     apply_translations,
     iter_english_docstrings,
     translate_texts,
@@ -76,6 +77,67 @@ class TranslateTextsTests(unittest.TestCase):
             _group_entries_by_marker(entries),
             ["译文一A\n译文一B", "译文二"],
         )
+
+    def test_restore_code_blocks_keeps_doctest_lines(self) -> None:
+        src = (
+            "An element in a Clifford algebra.\n"
+            "\n"
+            "TESTS::\n"
+            "\n"
+            "    sage: Q = QuadraticForm(ZZ, 3, [1, 2, 3])\n"
+            "    sage: TestSuite(elt).run()\n"
+        )
+        dst = (
+            "克利福德代数中的一个元素。\n"
+            "\n"
+            "测试::\n"
+            "\n"
+            "    圣人： Q = QuadraticForm(ZZ, 3, [1, 2, 3])\n"
+            "    鼠尾草：TestSuite(elt).run()\n"
+        )
+        restored = _restore_code_blocks(src, dst)
+        self.assertIn("TESTS::", restored)
+        self.assertIn("sage: Q = QuadraticForm", restored)
+        self.assertIn("sage: TestSuite", restored)
+        self.assertNotIn("圣人", restored)
+        self.assertIn("克利福德代数中的一个元素。", restored)
+
+    def test_restore_code_blocks_keeps_latex_lines(self) -> None:
+        src = "Math display:\n\nx_1 \\wedge x_2 \\mapsto y\n"
+        dst = "数学显示：\n\nx_1 \\楔形 x_2 \\映射到 y\n"
+        restored = _restore_code_blocks(src, dst)
+        self.assertIn("\\wedge", restored)
+        self.assertNotIn("\\楔形", restored)
+        self.assertIn("数学显示：", restored)
+
+    def test_restore_code_blocks_mismatch_keeps_translation(self) -> None:
+        self.assertEqual(_restore_code_blocks("A\nB", "甲"), "甲")
+
+    def test_restore_code_blocks_unaligned_restores_block_by_position(self) -> None:
+        src = (
+            "Summary.\n"
+            "\n"
+            "TESTS::\n"
+            "\n"
+            "    sage: Q = QuadraticForm(ZZ, 3, [1, 2, 3])\n"
+            "    sage: TestSuite(elt).run()\n"
+        )
+        dst = (
+            "摘要。\n"
+            "\n"
+            "测试::\n"
+            "\n"
+            "    圣人： Q = QuadraticForm(ZZ, 3, [1, 2, 3])\n"
+            "    鼠尾草：TestSuite(elt).run()\n"
+            "摘要。"  # the model dropped a blank line — counts differ
+        )
+        restored = _restore_code_blocks(src, dst)
+        self.assertIn("TESTS::", restored)
+        self.assertIn("sage: Q = QuadraticForm", restored)
+        self.assertIn("sage: TestSuite(elt).run()", restored)
+        self.assertNotIn("圣人", restored)
+        self.assertNotIn("鼠尾草", restored)
+        self.assertIn("摘要。", restored)
 
     def test_baidu_batch_marker_grouping_maps_pack(self) -> None:
         entries = [

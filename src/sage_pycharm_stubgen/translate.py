@@ -52,7 +52,11 @@ def _request_google_batch(texts: list[str], timeout: float = 20.0) -> dict[str, 
     parts = translated.split(_SEP)
     if len(parts) != len(texts):
         return {}
-    return {src: dst.strip() for src, dst in zip(texts, parts) if dst.strip()}
+    return {
+        src: _restore_code_blocks(src, dst.strip())
+        for src, dst in zip(texts, parts)
+        if dst.strip()
+    }
 
 
 _BAIDU_MAX_BYTES = 6000
@@ -172,6 +176,131 @@ def _group_entries_by_marker(entries: list[tuple[str, str]]) -> list[str]:
     return ["\n".join(group).strip() for group in groups]
 
 
+_SAGE_PROMPT_RE = re.compile(r"^\s*(?:sage:|>>>)\s")
+_DIRECTIVE_RE = re.compile(r"^\s*\.\.\s+\S+::")
+
+
+def _restore_code_blocks(src: str, dst: str) -> str:
+    """Restore code/doctest lines that machine translation mangled.
+
+    Machine translation reliably rewrites tokens it should copy: ``sage:``
+    prompts become prose (the model even "translated" the word sage to
+    "圣人"), ``TESTS::`` headers, LaTeX commands and doctest outputs change.
+    When the source and translation line counts align, walk them in lockstep
+    and keep the source line verbatim inside doctest blocks (``sage:``/
+    ``>>>`` prompts and their continuations), for reStructuredText section
+    headers, and for LaTeX-bearing display lines.  When they do not align
+    (the model drops blank lines), locate each code line in the translation
+    by its surviving leading token and replace the whole line; section
+    headers are matched in order.
+    """
+    src_lines = src.splitlines()
+    dst_lines = dst.splitlines()
+    if len(src_lines) == len(dst_lines):
+        out: list[str] = []
+        in_code = False
+        for s, d in zip(src_lines, dst_lines):
+            stripped = s.strip()
+            if _SAGE_PROMPT_RE.match(s):
+                in_code = True
+                out.append(s)
+                continue
+            if in_code:
+                if stripped == "":
+                    in_code = False
+                    out.append(d)
+                else:
+                    out.append(s)
+                continue
+            if _DIRECTIVE_RE.match(s) or stripped.endswith("::") or "\\" in s:
+                out.append(s)
+                continue
+            out.append(d)
+        return "\n".join(out)
+
+    # Anchor-based fallback for unaligned translations: code tokens survive
+    # even when the prompt around them was translated, so they locate the
+    # line to replace.  Once a block's first prompt is anchored, the rest of
+    # the block maps by position — doctest blocks contain no blank lines and
+    # the model preserves intra-block order, so short outputs ("True",
+    # "x*z - 5*x - y") are restored without needing their own anchors.
+    out = dst_lines[:]
+    replaced: set[int] = set()
+
+    def find_line(anchor: str) -> int | None:
+        for i, line in enumerate(out):
+            if i not in replaced and anchor in line:
+                return i
+        return None
+
+    src_block: list[str] = []
+    anchor_idx: int | None = None
+
+    def flush_block() -> None:
+        nonlocal anchor_idx
+        if anchor_idx is None or not src_block:
+            anchor_idx = None
+            src_block.clear()
+            return
+        for k, s in enumerate(src_block):
+            idx = anchor_idx + k + 1
+            if idx < len(out) and idx not in replaced:
+                out[idx] = s
+                replaced.add(idx)
+        anchor_idx = None
+        src_block.clear()
+
+    for s in src_lines:
+        stripped = s.strip()
+        if _SAGE_PROMPT_RE.match(s):
+            if anchor_idx is None and not src_block:
+                anchor = re.sub(r"^\s*(?:sage:|>>>)\s*", "", s).strip()[:24]
+                idx = find_line(anchor) if anchor else None
+                if idx is not None:
+                    out[idx] = s
+                    replaced.add(idx)
+                    anchor_idx = idx
+            else:
+                src_block.append(s)
+            continue
+        if anchor_idx is not None or src_block:
+            if stripped == "":
+                flush_block()
+            else:
+                src_block.append(s)
+            continue
+
+    flush_block()
+
+    # LaTeX display lines: locate by their first token plus the presence of
+    # a backslash in the mangled translation line.
+    for s in src_lines:
+        if "\\" not in s or _SAGE_PROMPT_RE.match(s):
+            continue
+        token = s.strip().split()[0] if s.strip() else ""
+        if len(token) < 2:
+            continue
+        for i, line in enumerate(out):
+            if i not in replaced and "\\" in line and token in line:
+                out[i] = s
+                replaced.add(i)
+                break
+
+    src_headers = [
+        s for s in src_lines if s.strip().endswith("::") or _DIRECTIVE_RE.match(s)
+    ]
+    dst_header_idx = [
+        i
+        for i, line in enumerate(out)
+        if i not in replaced
+        and (line.strip().endswith("::") or line.strip().startswith(".."))
+    ]
+    for s, idx in zip(src_headers, dst_header_idx):
+        out[idx] = s
+        replaced.add(idx)
+    return "\n".join(out)
+
+
 def _baidu_translate_segmented(
     text: str,
     appid: str,
@@ -258,7 +387,7 @@ def _request_baidu_batch(
                 except Exception:
                     translated = ""
                 if translated:
-                    out[pack[0]] = translated
+                    out[pack[0]] = _restore_code_blocks(pack[0], translated)
             else:
                 reference_batch = reference + " " + _BAIDU_SPLIT_REFERENCE
                 groups: list[str] = []
@@ -275,7 +404,7 @@ def _request_baidu_batch(
                     groups = []
                 if len(groups) == len(pack) and all(groups):
                     for src, dst in zip(pack, groups):
-                        out[src] = dst
+                        out[src] = _restore_code_blocks(src, dst)
                 else:
                     # The marker boundaries broke — fall back to per-text
                     # requests.
@@ -287,7 +416,7 @@ def _request_baidu_batch(
                         except Exception:
                             continue
                         if translated:
-                            out[single] = translated
+                            out[single] = _restore_code_blocks(single, translated)
             time.sleep(pause)
         except Exception:
             # Contain unexpected worker errors; the caller counts the text
