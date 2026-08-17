@@ -310,4 +310,4 @@ python -m compileall -q src tests
 
 ## 许可证
 
-MIT
+[GPL-3.0](LICENSE)。衍生作品须以相同许可证保持开源，并保留原作者版权声明。

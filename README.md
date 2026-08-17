@@ -351,4 +351,5 @@ python -m compileall -q src tests
 
 ## License
 
-MIT
+[GPL-3.0](LICENSE). Derivative works must remain open under the same
+license, and the original copyright notice must be preserved.
