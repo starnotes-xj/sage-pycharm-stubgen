@@ -17,9 +17,24 @@ from typing import Any, Iterable
 from .factory_inference import FactoryInference, factory_return_map, infer_factory_returns
 from .docstring_enrich import EnrichmentSummary, enrich_stubs, _quote
 from .supplemental_docs import SUPPLEMENTAL_DOCS
+from .py_renderer import render_py_stub
 
 
 DEFAULT_PATTERNS = ("**/*.pyx",)
+
+#: Relative globs skipped when --include-py discovers pure-Python modules:
+#: package inits, tests, dynamic distribution shims, and the top-level
+#: all.py / all__* re-export files (all.py gets a dedicated generated stub).
+DEFAULT_PY_EXCLUDES = (
+    "**/__init__.py",
+    "**/tests/**",
+    "**/test/**",
+    "**/*_test.py",
+    "**/doctest*/**",
+    "**/distributions/**",
+    "all.py",
+    "all__*.py",
+)
 
 
 def _glob_matches(path: str, pattern: str) -> bool:
@@ -95,6 +110,7 @@ def discover_sources(
     sage_package: Path,
     patterns: Iterable[str] = DEFAULT_PATTERNS,
     excludes: Iterable[str] = (),
+    include_py: bool = False,
 ) -> list[Path]:
     normalized_patterns = tuple(patterns) or DEFAULT_PATTERNS
     normalized_excludes = tuple(excludes)
@@ -107,6 +123,14 @@ def discover_sources(
         if any(_glob_matches(relative, pattern) for pattern in normalized_excludes):
             continue
         matches.append(source)
+
+    if include_py:
+        py_excludes = normalized_excludes + DEFAULT_PY_EXCLUDES
+        for source in sage_package.rglob("*.py"):
+            relative = source.relative_to(sage_package).as_posix()
+            if any(_glob_matches(relative, pattern) for pattern in py_excludes):
+                continue
+            matches.append(source)
 
     return sorted(set(matches))
 
@@ -581,6 +605,7 @@ def generate(
     sage_package: Path | None = None,
     patterns: Iterable[str] = DEFAULT_PATTERNS,
     excludes: Iterable[str] = (),
+    include_py: bool = False,
     include_private: bool = False,
     generate_all: bool = True,
     use_runtime_docs: bool = True,
@@ -597,7 +622,7 @@ def generate(
     from stubgen_pyx import StubgenPyx
     from stubgen_pyx.config import StubgenPyxConfig
 
-    sources = discover_sources(package, patterns, excludes)
+    sources = discover_sources(package, patterns, excludes, include_py)
     summary = GenerationSummary(
         sage_version=sage_version,
         sage_package=str(package),
@@ -629,30 +654,49 @@ def generate(
         relative = source.relative_to(package).with_suffix(".pyi")
         target = output_root / "sage" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        result = converters[0][1].convert_single_file(source, target)
-        used_fallback: str | None = None
-        if not result.success:
-            for fallback_name, fallback_converter in converters[1:]:
-                retry = fallback_converter.convert_single_file(source, target)
-                if retry.success and target.is_file():
-                    result = retry
-                    used_fallback = fallback_name
-                    break
-        if not result.success and runtime_fallback(source, package, target):
-            used_fallback = "runtime-introspection"
 
-        if target.is_file() and (result.success or used_fallback is not None):
+        used_fallback: str | None = None
+        if source.suffix == ".py":
+            # Pure-Python module: render the .py into a complete .pyi via the
+            # ast-based renderer (signatures kept, bodies stripped), then let
+            # the enrichment pass below apply curated returns/docs exactly
+            # like for the compiled-module stubs.
+            try:
+                target.write_text(render_py_stub(source), encoding="utf-8")
+            except Exception as exc:  # parse/unparse failure: runtime fallback
+                used_fallback = None
+                if not runtime_fallback(source, package, target):
+                    summary.failed += 1
+                    summary.failures.append(Failure(str(source), str(exc)))
+                    if verbose:
+                        print(f"[{index}/{len(sources)}] failed: {relative}", file=sys.stderr)
+                    continue
+                used_fallback = "runtime-introspection"
+            result = None
+        else:
+            result = converters[0][1].convert_single_file(source, target)
+            if not result.success:
+                for fallback_name, fallback_converter in converters[1:]:
+                    retry = fallback_converter.convert_single_file(source, target)
+                    if retry.success and target.is_file():
+                        result = retry
+                        used_fallback = fallback_name
+                        break
+            if not result.success and runtime_fallback(source, package, target):
+                used_fallback = "runtime-introspection"
+
+        if target.is_file():
             summary.generated += 1
             if used_fallback is not None:
                 summary.fallbacks.append(
                     f"{source.relative_to(package).as_posix()}: {used_fallback}"
                 )
-        elif result.success:
+        elif source.suffix == ".pyx":
             # A Cython __init__ file can be deliberately skipped by stubgen-pyx.
             continue
         else:
             summary.failed += 1
-            summary.failures.append(Failure(str(source), str(result.error)))
+            summary.failures.append(Failure(str(source), "no stub produced"))
         if verbose:
             state = "ok" if target.is_file() else "failed"
             print(f"[{index}/{len(sources)}] {state}: {relative}", file=sys.stderr)

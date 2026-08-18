@@ -66,6 +66,12 @@ This project:
 - converts installed `.pyx` files, with matching `.pxd` declarations when
   possible, into `.pyi` files using
   [`stubgen-pyx`](https://github.com/jon-edward/stubgen-pyx);
+- with `--include-py` (0.8.3+), also renders every pure-Python module
+  (`*.py`) into a complete `.pyi` — signatures and docstrings kept, function
+  bodies stripped — so element chains through pure-Python functions
+  (`for q in prime_divisors(p - 1)` → `q.nbits()`) are typed too; package
+  inits, tests, dynamic distribution shims and the `all.py` re-export files
+  are skipped automatically;
 - generates explicit exports for the dynamic `sage.all` module;
 - infers importable return types for dynamic factories from the active Sage
   environment;
@@ -105,7 +111,10 @@ Python installation cannot inspect a Sage environment installed in WSL.
 The Chinese curated docs, the finite-field element-class return annotations,
 and the downgrade protection ship since **0.7.0**; **0.8.0** adds the
 opt-in machine-translation layer (a bundled shared cache plus the
-`translate-docs` command below).
+`translate-docs` command below).  **0.8.3** adds pure-Python module stubs
+(`--include-py`): with it, `sage-pycharm-stubgen --include-py --install`
+also types every function defined in pure-Python modules (`prime_divisors`,
+`divisors`, ...), not only the compiled ones.
 
 **Prefer English docs?** Run `sage-pycharm-stubgen --doc-language en
 --install`: the curated Chinese docstrings are skipped (the original
@@ -119,7 +128,7 @@ Inside the Sage environment:
 ```bash
 conda activate sage
 python -m pip install sage-pycharm-stubgen
-sage-pycharm-stubgen --install
+sage-pycharm-stubgen --include-py --install
 ```
 
 To install the current development version directly from GitHub instead, use:

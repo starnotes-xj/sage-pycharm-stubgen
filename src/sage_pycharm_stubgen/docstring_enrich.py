@@ -292,7 +292,11 @@ class RuntimeDocProvider:
         self._ensure_sage_ready()
         try:
             module = importlib.import_module(module_name)
-        except Exception as exc:  # noqa: BLE001 - record and continue
+        except BaseException as exc:  # noqa: BLE001 - record and continue
+            # BaseException (not Exception): importing an arbitrary sage module
+            # can raise pytest's `Skipped` (a BaseException subclass) — e.g.
+            # sage/numerical/backends/cvxpy_backend_test.py — and that must
+            # never abort the whole generation run.
             self._failures.append(f"{module_name}: {type(exc).__name__}: {exc}")
             self._cache[module_name] = {}
             return {}

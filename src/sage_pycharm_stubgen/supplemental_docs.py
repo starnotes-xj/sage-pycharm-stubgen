@@ -85,6 +85,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'list[Integer]',
             "imports": ['from sage.rings.integer import Integer'],
         },
+        "prime_divisors": {
+            "doc": '返回整数 n 的互不相同的素因子列表（升序、不含重数；负数取绝对值，-1 不算素因子）。\n\n参数:\n- ``n`` -- 整数（非零）\n\n返回:\nlist[Integer] -- n 的不同素因子，按升序排列；模块中 ``prime_factors`` 是 ``prime_divisors`` 的别名（两者是同一函数）。常用于 CTF 的 p-1 分解：``max(q.nbits() for q in prime_divisors(p - 1))``\n\n示例::\n\n    sage: prime_divisors(100)\n    [2, 5]',
+            "return": 'list[Integer]',
+            "imports": ['from sage.rings.integer import Integer'],
+        },
         "primitive_root": {
             "doc": '返回模 n 的原根（乘法群的生成元）。\n\n参数:\n- ``n`` -- 非零整数；n 存在原根当且仅当 n = 4 或 n = p^k 或 n = 2*p^k（p 为奇素数，k >= 0）\n- ``check`` -- 布尔（默认 True）；False 时假定 n 有原根（行为未定义）\n\n返回:\nInteger -- n 的正原根；n 为素数时返回最小原根；n 无原根时抛 ValueError\n\n示例::\n\n    sage: primitive_root(23)\n    5',
             "return": 'Integer',

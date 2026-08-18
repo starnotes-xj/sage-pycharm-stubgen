@@ -41,6 +41,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Relative glob to exclude; repeatable",
     )
     parser.add_argument(
+        "--include-py",
+        action="store_true",
+        help=(
+            "Also stub pure-Python modules (*.py) — not just the compiled "
+            "Cython modules (*.pyx).  Package inits, tests, dynamic "
+            "distribution shims and the all.py re-export files are skipped "
+            "automatically; --exclude adds more.  The .pyi keeps every "
+            "public def/class (bodies stripped to the docstring) so PyCharm "
+            "can type element chains through pure-Python functions "
+            "(e.g. prime_divisors in sage/arith/misc.py)."
+        ),
+    )
+    parser.add_argument(
         "--include-private",
         action="store_true",
         help="Include private Cython functions in generated stubs",
@@ -407,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
         sage_package=args.source,
         patterns=args.patterns or DEFAULT_PATTERNS,
         excludes=args.exclude,
+        include_py=args.include_py,
         include_private=args.include_private,
         generate_all=not args.no_all_stub,
         use_runtime_docs=not args.no_runtime_docs,
