@@ -502,6 +502,61 @@ def enhance_factory_instances(output_root: Path) -> bool:
     return changed
 
 
+def enhance_method_aliases(output_root: Path) -> bool:
+    """Turn class-body method aliases (``X = Y``, Y a same-class method) into
+    real ``def X`` declarations.
+
+    Sage sources frequently alias methods (``order = cardinality``,
+    ``additive_order = order``, ``num_verts = order``); stubgen-pyx renders
+    these as class attributes, so completion shows a plain variable (no
+    callable icon, no parameter list, no return type).  Copy the aliased
+    method's signature and return annotation into a ``def`` so the alias is
+    a first-class method.  Multi-line assignments are left untouched.
+    """
+    changed = False
+    for pyi in output_root.rglob("*.pyi"):
+        text = pyi.read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        lines = text.splitlines()
+        rewritten = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            methods = {
+                stmt.name: stmt
+                for stmt in node.body
+                if isinstance(stmt, ast.FunctionDef)
+            }
+            for stmt in node.body:
+                if not (
+                    isinstance(stmt, ast.Assign)
+                    and len(stmt.targets) == 1
+                    and isinstance(stmt.targets[0], ast.Name)
+                    and isinstance(stmt.value, ast.Name)
+                    and stmt.value.id in methods
+                    and stmt.lineno == stmt.end_lineno
+                ):
+                    continue
+                source = methods[stmt.value.id]
+                signature = ast.unparse(source.args)
+                annotation = (
+                    f" -> {ast.unparse(source.returns)}" if source.returns else ""
+                )
+                original = lines[stmt.lineno - 1]
+                indent = original[: len(original) - len(original.lstrip())]
+                lines[stmt.lineno - 1] = (
+                    f"{indent}def {stmt.targets[0].id}({signature}){annotation}: ..."
+                )
+                rewritten = True
+        if rewritten:
+            pyi.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            changed = True
+    return changed
+
+
 def _lazy_import_target(value: Any) -> tuple[str, str] | None:
     cls = type(value)
     if cls.__module__ != "sage.misc.lazy_import" or cls.__name__ != "LazyImport":
@@ -934,6 +989,10 @@ def generate(
     if enhance_factory_instances(output_root):
         summary.enhanced.append(
             "module-level factory instances re-exported via all.pyi declarations"
+        )
+    if enhance_method_aliases(output_root):
+        summary.enhanced.append(
+            "class-body method aliases promoted to def declarations"
         )
 
     summary.write(output_root / "generation-report.json")

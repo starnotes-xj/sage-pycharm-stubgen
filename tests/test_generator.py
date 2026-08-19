@@ -16,6 +16,7 @@ from sage_pycharm_stubgen.generator import (
     enhance_integer_mod_stub,
     enhance_integer_stub,
     enhance_lazy_imports,
+    enhance_method_aliases,
     enhance_parent_chain,
     enhance_parent_getitem,
     render_sage_all_stub,
@@ -198,6 +199,45 @@ def IntegerMod(parent, value): ...
         self.assertIn("Matrix = LazyImport('sage.matrix.constructor', 'Matrix')", content)
         # Non-sage target module -> keep the assignment.
         self.assertIn("to_hex = LazyImport('matplotlib.colors', 'to_hex')", content)
+
+    def test_method_aliases_promoted_to_defs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "sage" / "demo"
+            target.mkdir(parents=True)
+            stub = target / "demo.pyi"
+            stub.write_text(
+                "class Widget:\n"
+                "    def cardinality(self, algorithm=None) -> int: ...\n"
+                "    order = cardinality\n"
+                "    def size(self) -> int: ...\n"
+                "    num_edges = size\n"
+                "    class_attr = 3\n"
+                "    class Inner:\n"
+                "        def length(self) -> int: ...\n"
+                "        n = length\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_method_aliases(root)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn(
+            "def order(self, algorithm=None) -> int: ...",
+            result,
+        )
+        self.assertIn("def num_edges(self) -> int: ...", result)
+        self.assertNotIn("order = cardinality", result)
+        self.assertNotIn("num_edges = size", result)
+        # Nested classes keep their deeper indentation.
+        self.assertIn("        def n(self) -> int: ...", result)
+        self.assertNotIn("        n = length", result)
+        # Non-alias assignments are untouched.
+        self.assertIn("class_attr = 3", result)
+        import ast
+
+        ast.parse(result)
 
     def test_factory_instances_reexported_from_all(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
