@@ -410,6 +410,69 @@ def enhance_lazy_imports(output_root: Path) -> bool:
     return changed
 
 
+def _all_factory_names(output_root: Path) -> set[str]:
+    """Names declared as typed factories in the generated ``all.pyi``.
+
+    ``render_sage_all_stub`` emits ``def X(...) -> _FactoryReturn_X`` for
+    every factory whose return type was inferred (upstream ``__call__``
+    annotation first, runtime probing as fallback).
+    """
+    path = output_root / "sage" / "all.pyi"
+    if not path.is_file():
+        return set()
+    text = path.read_text(encoding="utf-8", errors="replace")
+    names: set[str] = set()
+    for match in re.finditer(
+        r"^def (\w+)\([^\n]*\) -> _FactoryReturn_\1:", text, re.MULTILINE
+    ):
+        names.add(match.group(1))
+    return names
+
+
+def enhance_factory_instances(output_root: Path) -> bool:
+    """Resolve module-level factory-instance assignments to all.pyi factories.
+
+    stubgen-pyx renders Cython factory globals (``X = XFactory('...')``,
+    e.g. ``FreeAlgebra = FreeAlgebraFactory(...)``) as bare assignments: the
+    name is typed as the factory *instance*, and ``UniqueFactory.__call__``
+    carries no return annotation, so ``X(...)`` loses its result type.  The
+    generated ``all.pyi`` already declares every exported factory with a
+    typed return (``def X(...) -> _FactoryReturn_X``); re-export through it
+    (``from sage.all import X as X``).  Names without an all.pyi factory
+    declaration are left untouched; curated ``declare`` entries that already
+    replaced an assignment (GF, EllipticCurve) are naturally not seen here.
+    """
+    factory_names = _all_factory_names(output_root)
+    if not factory_names:
+        return False
+    changed = False
+    for pyi in output_root.rglob("*.pyi"):
+        try:
+            tree = ast.parse(pyi.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        lines: list[str] | None = None
+        for stmt in tree.body:
+            if not (
+                isinstance(stmt, ast.Assign)
+                and len(stmt.targets) == 1
+                and isinstance(stmt.targets[0], ast.Name)
+                and stmt.targets[0].id in factory_names
+                and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name)
+                and stmt.lineno == stmt.end_lineno
+            ):
+                continue
+            name = stmt.targets[0].id
+            if lines is None:
+                lines = pyi.read_text(encoding="utf-8", errors="replace").splitlines()
+            lines[stmt.lineno - 1] = f"from sage.all import {name} as {name}"
+        if lines is not None:
+            pyi.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            changed = True
+    return changed
+
+
 def _lazy_import_target(value: Any) -> tuple[str, str] | None:
     cls = type(value)
     if cls.__module__ != "sage.misc.lazy_import" or cls.__name__ != "LazyImport":
@@ -831,10 +894,16 @@ def generate(
 
     # AFTER generation and enrichment: turn module-level LazyImport re-exports
     # into real from-imports so names like strongly_regular_db.GF keep their
-    # callee types when users `from <module> import GF`.
+    # callee types when users `from <module> import GF`; and re-export
+    # factory-instance assignments (X = XFactory(...)) through the typed
+    # all.pyi declarations.
     if enhance_lazy_imports(output_root):
         summary.enhanced.append(
             "module-level LazyImport re-exports resolved to from-imports"
+        )
+    if enhance_factory_instances(output_root):
+        summary.enhanced.append(
+            "module-level factory instances re-exported via all.pyi declarations"
         )
 
     summary.write(output_root / "generation-report.json")

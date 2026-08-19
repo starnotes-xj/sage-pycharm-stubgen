@@ -11,6 +11,7 @@ from pathlib import Path
 from sage_pycharm_stubgen.cli import build_parser
 from sage_pycharm_stubgen.generator import (
     discover_sources,
+    enhance_factory_instances,
     enhance_finite_field_stub,
     enhance_integer_mod_stub,
     enhance_integer_stub,
@@ -197,6 +198,56 @@ def IntegerMod(parent, value): ...
         self.assertIn("Matrix = LazyImport('sage.matrix.constructor', 'Matrix')", content)
         # Non-sage target module -> keep the assignment.
         self.assertIn("to_hex = LazyImport('matplotlib.colors', 'to_hex')", content)
+
+    def test_factory_instances_reexported_from_all(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sage_dir = root / "sage"
+            sage_dir.mkdir()
+            (sage_dir / "all.pyi").write_text(
+                "def GF(*args: Any, **kwargs: Any) -> _FactoryReturn_GF: ...\n"
+                "def FiniteField(*args: Any, **kwargs: Any) -> _FactoryReturn_FiniteField: ...\n",
+                encoding="utf-8",
+            )
+            rings = sage_dir / "rings" / "finite_rings"
+            rings.mkdir(parents=True)
+            stub = rings / "finite_field_constructor.pyi"
+            stub.write_text(
+                "FiniteField = FiniteFieldFactory('FiniteField')\n"
+                "def ordinary(x): ...\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_factory_instances(root)
+            content = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn("from sage.all import FiniteField as FiniteField", content)
+        # Non-factory statements are untouched.
+        self.assertIn("def ordinary(x): ...", content)
+
+    def test_factory_instances_skipped_without_all_declaration(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sage_dir = root / "sage"
+            sage_dir.mkdir()
+            (sage_dir / "all.pyi").write_text(
+                "def GF(*args: Any, **kwargs: Any) -> _FactoryReturn_GF: ...\n",
+                encoding="utf-8",
+            )
+            rings = sage_dir / "rings" / "finite_rings"
+            rings.mkdir(parents=True)
+            stub = rings / "finite_field_constructor.pyi"
+            stub.write_text(
+                "FiniteField = FiniteFieldFactory('FiniteField')\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_factory_instances(root)
+            content = stub.read_text(encoding="utf-8")
+
+        self.assertFalse(changed)
+        self.assertIn("FiniteField = FiniteFieldFactory", content)
 
     def test_integer_stub_gains_arithmetic_dunders(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
