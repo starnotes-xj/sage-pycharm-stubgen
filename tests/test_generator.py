@@ -141,7 +141,7 @@ def IntegerMod(parent, value): ...
         self.assertIn("from typing import Iterator", result)
         self.assertIn(
             "def __iter__(self) -> Iterator[FiniteField_givaroElement | "
-            "FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt]:",
+            "FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt | IntegerMod_int]:",
             result,
         )
         compile(result, "finite_field_base.pyi", "exec")

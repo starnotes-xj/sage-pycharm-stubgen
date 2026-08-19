@@ -180,6 +180,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print one JSON object per finding (stable for automation)",
     )
+    conformance_parser.add_argument(
+        "--runtime",
+        action="store_true",
+        help=(
+            "Additionally execute the doctest examples of every curated "
+            "return entry against the live Sage runtime and verify that the "
+            "runtime type fits the declared annotation (reports base-class "
+            "declarations hiding concrete subclasses)"
+        ),
+    )
     translate_parser = subparsers.add_parser(
         "translate-docs",
         help=(
@@ -291,7 +301,11 @@ def run_preparse(args: argparse.Namespace) -> int:
 
 
 def run_conformance_cmd(args: argparse.Namespace) -> int:
-    from .conformance import count_source_annotations, run_conformance
+    from .conformance import (
+        count_source_annotations,
+        run_conformance,
+        run_runtime_checks,
+    )
 
     source_root = args.source
     if source_root is None:
@@ -302,10 +316,17 @@ def run_conformance_cmd(args: argparse.Namespace) -> int:
     for finding in findings:
         counts[finding.status] += 1
 
+    runtime_findings = run_runtime_checks(source_root) if args.runtime else []
+    runtime_counts = {"ok": 0, "mismatch": 0, "skipped": 0}
+    for finding in runtime_findings:
+        runtime_counts[finding.status] += 1
+
     if args.json:
         import json as _json
 
         for finding in findings:
+            print(_json.dumps(finding.as_json(), ensure_ascii=False))
+        for finding in runtime_findings:
             print(_json.dumps(finding.as_json(), ensure_ascii=False))
         return 0
 
@@ -321,6 +342,18 @@ def run_conformance_cmd(args: argparse.Namespace) -> int:
                 f"CONFLICT {finding.module}.{finding.qualname}: "
                 f"curated={finding.curated!r} source={finding.annotation!r}"
             )
+    if args.runtime:
+        print(
+            f"Runtime probes: {len(runtime_findings)} "
+            f"(ok {runtime_counts['ok']}, mismatch {runtime_counts['mismatch']}, "
+            f"skipped {runtime_counts['skipped']})"
+        )
+        for finding in runtime_findings:
+            if finding.status == "mismatch":
+                print(
+                    f"MISMATCH {finding.module}.{finding.qualname}: "
+                    f"declared={finding.declared!r} runtime={finding.actual!r} ({finding.detail})"
+                )
     return 0
 
 

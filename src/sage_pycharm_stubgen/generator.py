@@ -342,7 +342,7 @@ def enhance_finite_field_stub(path: Path) -> bool:
         )
     element_union = (
         "FiniteField_givaroElement | FiniteField_ntl_gf2eElement | "
-        "FiniteFieldElement_pari_ffelt"
+        "FiniteFieldElement_pari_ffelt | IntegerMod_int"
     )
     if f"def __iter__(self) -> Iterator[{element_union}]" not in content:
         if "from typing import Iterator" not in content:

@@ -666,19 +666,22 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Matrix.eigenspaces_left": {
             "doc": "返回左特征空间列表 [(特征值, 特征空间), ...]。\n\n参数:\n- ``format`` -- 输出格式（str，'all'（默认）/'galois' 等）\n- ``var`` -- 扩域生成元名称（str，默认 'a'）\n- ``algebraic_multiplicity`` -- 是否同时返回代数重数（bool，默认 False）\n\n返回:\nlist[Any] -- [(特征值, 特征空间), ...]；algebraic_multiplicity=True 时增加代数重数。特征值不在基域时抛 NotImplementedError。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).eigenspaces_left()\n    [\n    (3, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [1 1]),\n    (-1, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [ 1 -1])\n    ]",
-            "return": 'list[Any]',
+            "return": 'Sequence[Any]',
+            "imports": ['from typing import Sequence'],
         },
         "Matrix.eigenspaces_right": {
             "doc": "返回右特征空间列表 [(特征值, 特征空间), ...]。\n\n参数:\n- ``format`` -- 输出格式（str，'all'（默认，含全部特征空间）/'galois'（有限域上按 Galois 轨道合并）等）\n- ``var`` -- 扩域生成元名称（str，默认 'a'）\n- ``algebraic_multiplicity`` -- 是否同时返回代数重数（bool，默认 False）\n\n返回:\nlist[Any] -- [(特征值, 特征空间), ...]；algebraic_multiplicity=True 时为 [(特征值, 特征空间, 代数重数), ...]。特征值不在基域时抛 NotImplementedError，可改用 format='galois'。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).eigenspaces_right()\n    [\n    (3, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [1 1]),\n    (-1, Vector space of degree 2 and dimension 1 over Rational Field\n    User basis matrix:\n    [ 1 -1])\n    ]",
-            "return": 'list[Any]',
+            "return": 'Sequence[Any]',
+            "imports": ['from typing import Sequence'],
         },
         "Matrix.eigenvalue_multiplicity": {
             "doc": '返回 s 作为矩阵广义特征值的（代数）重数。\n\n参数:\n- ``s`` -- 特征值（环元素）\n\n返回:\nInteger -- s 的代数重数（非特征值为 0）\n\n示例::\n\n    sage: A = matrix(QQ, [[1, 2], [2, 1]])\n    sage: A.eigenvalue_multiplicity(3)\n    1',
-            "return": 'Integer',
+            "return": 'int',
         },
         "Matrix.eigenvalues": {
             "doc": "返回带重数的特征值序列。\n\n参数:\n- ``extend`` -- 是否允许在基域的扩域中求特征值（bool，默认 True）\n- ``algorithm`` -- 使用的算法（str，可选，如 'sage'/'flint'/'mpmath'/'pari' 等）\n\n返回:\nlist[Any] -- 特征值序列（按代数重数重复）；有理数矩阵给出 QQbar 元素，有限域矩阵在扩域（如 GF(7^2)）中给出；extend=False 时只返回基域内的特征值（可能为空列表）。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).eigenvalues()\n    [3, -1]\n    sage: matrix(GF(7), [[1,2],[3,4]]).eigenvalues()\n    [2*z2 + 5, 5*z2]\n    sage: matrix(GF(7), [[1,2],[3,4]]).eigenvalues(extend=False)\n    []",
-            "return": 'list[Any]',
+            "return": 'Sequence[Any]',
+            "imports": ['from typing import Sequence'],
         },
         "Matrix.eigenvectors_left": {
             "doc": '返回左特征向量信息列表 [(特征值, [特征向量, ...], 重数), ...]。\n\n参数:\n- ``extend`` -- 是否允许在扩域中求解（bool，默认 True）\n- ``algorithm`` -- 使用的算法（str，可选）\n\n返回:\nlist[Any] -- 三元组列表：(特征值, 左特征向量列表, 代数重数)。特征值不在基域分式域或 QQbar 中时抛 NotImplementedError。\n\n示例::\n\n    sage: matrix(QQ, [[1,2],[2,1]]).eigenvectors_left()\n    [(3, [\n    (1, 1)\n    ], 1), (-1, [\n    (1, -1)\n    ], 1)]',
@@ -721,7 +724,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Matrix.hadamard_bound": {
             "doc": '返回整数 n，使得行列式的绝对值不超过 10^n。\n\n返回:\nInteger -- 满足 |det(A)| <= 10^n 的整数 n（由行范数与列范数分别估计后取较小者）。\n\n示例::\n\n    sage: matrix(ZZ, [[1,2],[3,4]]).hadamard_bound()\n    2',
-            "return": 'Integer',
+            "return": 'int',
             "imports": ['from sage.rings.integer import Integer'],
         },
         "Matrix.hermite_form": {
@@ -853,7 +856,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Matrix.left_nullity": {
             "doc": '返回左零化度，即转置矩阵核的维数，等于行数减去秩。\n\n返回:\nInteger -- dim(ker(A^T))。\n\n示例::\n\n    sage: matrix(QQ, [[1,2,3],[2,4,6]]).left_nullity()\n    1',
-            "return": 'Integer',
+            "return": 'int',
             "imports": ['from sage.rings.integer import Integer'],
         },
         "Matrix.matrix_window": {
@@ -899,7 +902,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Matrix.pivot_rows": {
             "doc": '返回矩阵的枢轴行位置：行空间中一组线性无关的顶行所在行号的元组。\n\n返回:\ntuple[Integer, ...] -- 枢轴行行号元组\n\n示例::\n\n    sage: A = matrix(QQ, [[1, 2], [2, 4], [0, 1]])\n    sage: A.pivot_rows()\n    (0, 2)',
-            "return": 'tuple[Integer, ...]',
+            "return": 'tuple[int, ...]',
         },
         "Matrix.plot": {
             "doc": "绘制矩阵的二维彩色图像（每个元素一个色块）并返回 Graphics 对象。\n\n参数:\n- ``*args, **kwds`` -- 透传给底层绘图函数的可选参数（plot 无额外文档化的参数）\n\n返回:\nAny -- Graphics 图像对象\n\n示例::\n\n    sage: M = matrix(RDF, [[1, 2], [3, 4]])\n    sage: p = M.plot()\n    sage: type(p)\n    <class 'sage.plot.graphics.Graphics'>\n    sage: p\n    Graphics object consisting of 1 graphics primitive",
@@ -947,7 +950,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Matrix.right_nullity": {
             "doc": '返回右零化度，即零空间（右核）的维数，等于列数减去秩。\n\n返回:\nInteger -- dim(ker(A))。\n\n示例::\n\n    sage: matrix(QQ, [[1,2,3],[2,4,6]]).right_nullity()\n    2',
-            "return": 'Integer',
+            "return": 'int',
             "imports": ['from sage.rings.integer import Integer'],
         },
         "Matrix.rook_vector": {
@@ -1297,7 +1300,8 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
     "sage.rings.fast_arith": {
         "prime_range": {
             "doc": '返回区间内全部素数（升序），区间为 [start, stop)。\n\n参数:\n- ``start`` -- 整数，起始值（含）；只传一个参数时视为上界，从 2 开始\n- ``stop`` -- 整数或 None（默认 None），上界（不含）\n- ``algorithm`` -- 字符串或 None（默认 None）\n- ``py_ints`` -- 布尔（默认 False）；True 时返回 Python int 列表而非 Sage Integer 列表\n\n返回:\nlist[int] -- 区间内按升序排列的素数列表；参数需满足 start >= 2、start <= stop，否则抛 ValueError\n\n示例::\n\n    sage: prime_range(20)\n    [2, 3, 5, 7, 11, 13, 17, 19]\n    sage: prime_range(10, 20)\n    [11, 13, 17, 19]',
-            "return": 'list[int]',
+            "return": 'list[Integer]',
+            "imports": ['from sage.rings.integer import Integer'],
         },
     },
     "sage.rings.finite_rings.element_base": {
@@ -1537,11 +1541,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.from_integer": {
             "doc": "把整数 n 的 p 进制展开 a0 + a1*p + a2*p^2 + ... + ak*p^k 解释为多项式 a0 + a1*a + ... + ak*a^k 并在生成元 a 处求值，得到域元素。是元素方法 to_integer() 的逆运算（F.from_integer(e.to_integer()) == e）。\n\n参数:\n- ``n`` -- 整数，须满足 0 <= n < order()（越界时报错）\n- ``reverse`` -- bool（默认 False）；为 True 时先逆序系数再求值。注意：仅基类实现（pari_ffelt 路径）支持该参数，givaro/ntl 实现覆盖版本只接受 n\n\n返回:\n域元素 -- 与 n 的 p 进制数字逐位对应（小端）的元素；0x57 -> a^6 + a^4 + a^2 + a + 1。越界时 givaro/ntl 抛 TypeError（消息 'n must be between 0 and self.order()'）。\n\n示例::\n\n    sage: x = polygen(GF(2))\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    sage: F.from_integer(0x57)\n    a^6 + a^4 + a^2 + a + 1\n    sage: F.from_integer(0x57).to_integer() == 0x57\n    True\n    sage: F.from_integer(256)\n    Traceback (most recent call last):\n    ...\n    TypeError: n must be between 0 and self.order()",
-            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt | IntegerMod_int',
             "imports": [
                 'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
                 'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
                 'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+                'from sage.rings.finite_rings.integer_mod import IntegerMod_int',
             ],
         },
         "FiniteField.galois_group": {
@@ -1549,11 +1554,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.gen": {
             "doc": "返回有限域（在素域上）的生成元。有限域只有一个生成元，即满足 modulus()(gen()) == 0 的元素。\n\n参数:\n- ``n`` -- 整数，只接受 0（其他值无意义，有限域只有一个生成元）\n\n返回:\n域元素 -- 生成元；素数域 GF(p) 的生成元为 1。\n\n示例::\n\n    sage: x = polygen(GF(2))\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    sage: F.gen()\n    a\n    sage: GF(7).gen()\n    1",
-            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt | IntegerMod_int',
             "imports": [
                 'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
                 'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
                 'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+                'from sage.rings.finite_rings.integer_mod import IntegerMod_int',
             ],
         },
         "FiniteField.is_conway": {
@@ -1576,11 +1582,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.multiplicative_generator": {
             "doc": "返回有限域乘法群 F* 的生成元（本原元），即乘法阶为 q-1 的元素。与 primitive_element() 含义相同。注意：Sage 给出的本原元可能随版本变化，且不一定等于 gen()。\n\n返回:\n域元素 -- 乘法群的生成元。\n\n示例::\n\n    sage: GF(997).multiplicative_generator()\n    7\n    sage: x = polygen(GF(2))\n    sage: F = GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    sage: F.multiplicative_generator()\n    a^4 + a + 1",
-            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt | IntegerMod_int',
             "imports": [
                 'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
                 'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
                 'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+                'from sage.rings.finite_rings.integer_mod import IntegerMod_int',
             ],
         },
         "FiniteField.ngens": {
@@ -1610,11 +1617,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.random_element": {
             "doc": "返回域中的一个随机元素。\n\n参数:\n- ``*args, **kwds`` -- 透传给底层向量空间 random_element() 的参数（如 prob=0 时以概率 0 取非零元，即恒返回 0；注意 prob 仅部分实现支持，givaro 实现会忽略它）\n\n返回:\n域元素 -- 随机元素（结果随机）。\n\n示例::\n\n    sage: GF(19^4, 'a').random_element(prob=0)\n    0",
-            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt',
+            "return": 'FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt | IntegerMod_int',
             "imports": [
                 'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
                 'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
                 'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+                'from sage.rings.finite_rings.integer_mod import IntegerMod_int',
             ],
         },
         "FiniteField.some_elements": {
@@ -1644,11 +1652,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "declare": 'def zeta_order(self) -> Integer',
         },
         "FiniteField._first_ngens": {
-            "declare": "def _first_ngens(self, n: int) -> tuple[FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt, ...]",
+            "declare": "def _first_ngens(self, n: int) -> tuple[FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt | IntegerMod_int, ...]",
             "imports": [
                 'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
                 'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
                 'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+                'from sage.rings.finite_rings.integer_mod import IntegerMod_int',
             ],
         },
     },
@@ -1685,7 +1694,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "IntegerMod_abstract.generalised_log": {
             "doc": "返回整数列表 [n_1, ..., n_d]，使得父环单位群各生成元 x_i 的 n_i 次幂之积等于 self（self 的广义离散对数）。\n\n返回:\nlist[Integer] -- 长度等于 ``self.parent().unit_gens()`` 中生成元个数 d 的整数列表，满足 prod(unit_gens()[i]**n_i) == self。仅对单位有效，非单位抛 ZeroDivisionError。注意：输出相对于默认算法（algorithm='sage'）给出的生成元集合，若父环曾以 algorithm='pari' 生成 unit_gens，其结果与本方法不兼容。\n\n示例::\n\n    sage: m = Mod(3,1568)\n    sage: v = m.generalised_log()\n    sage: v\n    [1, 3, 1]\n    sage: prod([Zmod(1568).unit_gens()[i]**v[i] for i in range(3)])\n    3",
-            "return": 'list[Integer]',
+            "return": 'list[Integer | int]',
             "imports": ['from sage.rings.integer import Integer'],
         },
         "IntegerMod_abstract.is_nilpotent": {
@@ -2648,7 +2657,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Rational.as_integer_ratio": {
             "doc": '返回该有理数的 (分子, 分母) 整数对。\n\n返回:\ntuple[Integer, Integer] -- 有序对 (self.numerator(), self.denominator())，即已约分的分子与分母\n\n示例::\n\n    sage: (-12/29).as_integer_ratio()\n    (-12, 29)',
-            "return": 'tuple[Integer, Integer]',
+            "return": 'tuple[int, int]',
         },
         "Rational.ceil": {
             "doc": '返回该有理数的向上取整（ceiling）。\n\n  返回:\n  Integer -- 不小于该有理数的最小整数。\n\n  示例::\n\n      sage: (QQ(7)/3).ceil()\n      3\n      sage: (QQ(-7)/3).ceil()\n      -2',
@@ -2821,7 +2830,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "Rational.squarefree_part": {
             "doc": '返回该有理数的无平方因子部分。\n\n  返回:\n  Rational -- 满足 self = z * y^2（y^2 为完全平方）的 z。\n\n  示例::\n\n      sage: QQ(12).squarefree_part()\n      3\n      sage: (QQ(2)/3).squarefree_part()\n      6',
-            "return": 'Rational',
+            "return": 'Integer',
         },
         "Rational.str": {
             "doc": "返回该有理数在指定基数下的字符串表示。\n\n参数:\n- ``base`` -- 基数，介于 2 与 36 之间的整数（int，默认 10）\n\n返回:\nstr -- 该有理数的字符串表示，分子与分母均以 ``base`` 基数书写，分母为 1 时省略\n\n示例::\n\n    sage: (-4/17).str()\n    '-4/17'\n    sage: (-4/17).str(2)\n    '-100/10001'",
@@ -2854,7 +2863,8 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
     "sage.rings.ring": {
         "Ring.order": {
             "doc": "返回环的元素个数（阶）。对有限环返回元素总数；对无限环（如一元多项式环 QQ[x]）抛 NotImplementedError，请改用 cardinality() 得到 +Infinity。\n\n返回:\nint -- 环的元素个数\n\n示例::\n\n    sage: GF(19).order()\n    19\n    sage: GF(19).cardinality()\n    19\n    sage: QQ['x'].order()\n    Traceback (most recent call last):\n    ...\n    NotImplementedError",
-            "return": 'int',
+            "return": 'Integer',
+            "imports": ['from sage.rings.integer import Integer'],
         },
     },
     "sage.schemes.curves.projective_curve": {
