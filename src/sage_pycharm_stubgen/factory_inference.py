@@ -219,7 +219,11 @@ def _candidate_calls(name: str, value: Any, namespace: dict[str, Any]) -> list[F
         "AffinePermutationGroup": [_call(["A", 2, 1])],
         "BrandtModule": [_call(5)],
         "DirichletGroup": [_call(5)],
-        "EllipticCurve": [_call([0, 0, 1, -1, 0])],
+        # CTF/有限域是唯一高频场景; 探测仅用 GF 参数, 让工厂返回精确到
+        # EllipticCurve_finite_field —— 共同基类 EllipticCurve_field 拿不到
+        # cardinality/order/points/trace_of_frobenius 等有限域独有方法
+        # (QQ 曲线运行时确实没有这些方法, 已实测)。
+        "EllipticCurve": [_call(namespace["GF"](29), [2, 3])],
         "FreeAlgebra": [_call(qq, 2, "x")],
         "FreeModule": [_call(zz, 2)],
         "FunctionField": [_call(qq, "x")],

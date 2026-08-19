@@ -2922,11 +2922,17 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "EllipticCurve_finite_field.order": {
             "doc": '返回有限域上椭圆曲线的有理点群的阶（即曲线上的点数，含无穷远点），是 cardinality() 的别名。CTF 中常用它判断群的阶是否等于 p（异常曲线）、是否为素数（SMART/SEMAE 攻击前提）或验证 Hasse 区间。\n\n参数:\n（无参数；若需指定算法请直接调用 cardinality(algorithm=...)）\n\n返回:\nInteger -- 曲线 E(GF(q)) 上全部有理点（包括无穷远点 O）的个数，即群阶 #E；结果会缓存。例如 E: y^2 = x^3 + x + 3 over GF(5) 的群阶为 4\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: E.order()\n    4\n\n    sage: EllipticCurve(GF(101), [2, 3]).order()\n    96',
             "return": 'Integer',
+            "declare": "def order(self, algorithm=None, extension_degree=1) -> Integer",
             "imports": ['from sage.rings.integer import Integer'],
         },
         "EllipticCurve_finite_field.points": {
             "doc": '返回该椭圆曲线上的全部有理点列表（包含无穷远点 O）。结果被缓存并排序，是不可变对象。CTF 中当 p 很小时用它穷举所有点，等价于验证群阶。rational_points() 是它的别名。\n\n参数:\n（无参数）\n\n返回:\nSequence[Any] -- 不可变、已排序的点序列，包含无穷远点 (0:1:0) 在内的所有有理点；长度为曲线的 order()。示例中 GF(5) 上 y^2 = x^3 + x + 3 有 4 个点\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: E.points()\n    [(0 : 1 : 0), (1 : 0 : 1), (4 : 1 : 1), (4 : 4 : 1)]\n    sage: len(E.points()) == E.order()\n    True',
             "return": 'Sequence[Any]',
+            "imports": ['from sage.structure.sequence import Sequence'],
+        },
+        "EllipticCurve_finite_field.rational_points": {
+            "doc": '返回该椭圆曲线上的全部有理点列表（包含无穷远点 O），是 points() 的别名（源码里 rational_points = points）。结果被缓存并排序。CTF 中当 p 很小时用它穷举所有点。\n\n参数:\n（无参数）\n\n返回:\nSequence[Any] -- 不可变、已排序的点序列，包含无穷远点 (0:1:0) 在内的所有有理点；长度为曲线的 order()。\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: E.rational_points()\n    [(0 : 1 : 0), (1 : 0 : 1), (4 : 1 : 1), (4 : 4 : 1)]',
+            "declare": "def rational_points(self, algorithm=None, extension_degree=1) -> Sequence[Any]",
             "imports": ['from sage.structure.sequence import Sequence'],
         },
         "EllipticCurve_finite_field.trace_of_frobenius": {
@@ -2936,6 +2942,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
     },
     "sage.schemes.elliptic_curves.ell_generic": {
+        "EllipticCurve_generic.__call__": {
+            "doc": "曲线点的构造：给定仿射坐标 (x, y) 返回曲线上的点（校验点在曲线上）；E(0) 返回无穷远点 O=(0:1:0)。CTF 中用于从题目给出的坐标构造基点/公钥（如 G = E(x, y)）。\n\n参数:\n- ``x`` -- x 坐标（基域元素），或 0 表示无穷远点\n- ``y`` -- y 坐标（与 x 对应）\n\n返回:\nEllipticCurvePoint_field -- 曲线上的点；有限域曲线上实际为 EllipticCurvePoint_finite_field，数域曲线上为 EllipticCurvePoint_number_field。无注解的 stub __call__ 会让 E(x, y) 断链成 Any（成员补全全失），此条目把它升级为点类型\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: E(4, 1)\n    (4 : 1 : 1)\n    sage: E(0)\n    (0 : 1 : 0)",
+            "return": 'EllipticCurvePoint_field',
+            "imports": ['from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_field'],
+        },
         "EllipticCurve_generic.gen": {
             "doc": '返回椭圆的第 i 个生成元，即 gens()[i]（依赖 gens() 已实现）。\n\n参数:\n- ``i`` -- （整数）生成元下标，0 或 1（非循环群时）\n\n返回:\nAny -- 第 i 个生成元（点）；当 gens() 未实现或下标越界时抛 NotImplementedError 或 IndexError。有限域上的曲线通常可用，返回与 gens()[i] 相同的点\n\n示例::\n\n    sage: E = EllipticCurve(GF(11), [2, 5])\n    sage: E.gen(0) == E.gens()[0]\n    True',
         },
