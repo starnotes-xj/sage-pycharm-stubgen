@@ -499,6 +499,36 @@ class EnrichStubFileTests(unittest.TestCase):
         self.assertIn("__len__ = ...", content)
         self.assertEqual(summary.declarations_added, 1)
 
+    def test_module_level_declare_trims_chain_assignment(self) -> None:
+        # Regression: module-level factory chains (``GF = FiniteField =
+        # FiniteFieldFactory('FiniteField')``) render as bare chained
+        # assignments, so `from sage.rings.finite_rings.finite_field_constructor
+        # import GF` bound GF to an untyped variable.  The curated declare
+        # must trim the chain head (``GF = ``) and keep the other targets
+        # (``FiniteField = ...`` survives).
+        stub = (
+            "from typing import Any\n\n\n"
+            "GF = FiniteField = FiniteFieldFactory('FiniteField')\n"
+        )
+        curated = {
+            "GF": {
+                "doc": "有限域工厂。",
+                "return": "_FieldBase",
+                "declare": "def GF(*args: Any, **kwargs: Any) -> _FieldBase",
+                "imports": [
+                    "from typing import Any",
+                    "from sage.rings.finite_rings.finite_field_base import FiniteField as _FieldBase",
+                ],
+            }
+        }
+        content, summary = self._enrich(stub, None, curated)
+
+        compile(content, "sample.pyi", "exec")
+        self.assertNotIn("GF = FiniteField = FiniteFieldFactory", content)
+        self.assertIn("FiniteField = FiniteFieldFactory('FiniteField')", content)
+        self.assertIn("def GF(*args: Any, **kwargs: Any) -> _FieldBase:", content)
+        self.assertEqual(summary.declarations_added, 1)
+
     def test_def_with_own_docstring_does_not_steal_following_string(self) -> None:
         # Regression: a def carrying its docstring used to delete it and
         # adopt the following sibling string (often a class docstring).

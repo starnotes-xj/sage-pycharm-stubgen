@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import fnmatch
 import importlib
 import inspect
@@ -334,6 +335,79 @@ def enhance_finite_field_stub(path: Path) -> bool:
         return False
     path.write_text(content, encoding="utf-8")
     return True
+
+
+_LAZY_IMPORT_RE = re.compile(
+    r"""^(\w+)\s*=\s*LazyImport\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]"""
+)
+
+
+def _module_declared_names(text: str) -> set[str]:
+    """Top-level names declared in a stub module.
+
+    Covers ``def``/``class``, assignments (including chains), and import
+    aliases -- the names a ``from module import name`` can bind to.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+    names: set[str] = set()
+    for stmt in tree.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(stmt.name)
+        elif isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(stmt, ast.ImportFrom):
+            for alias in stmt.names:
+                names.add(alias.asname or alias.name)
+        elif isinstance(stmt, ast.Import):
+            for alias in stmt.names:
+                names.add(alias.asname or alias.name.split(".")[0])
+    return names
+
+
+def enhance_lazy_imports(output_root: Path) -> bool:
+    """Resolve module-level ``X = LazyImport('sage.mod', 'name')`` re-exports.
+
+    stubgen-pyx renders Cython ``LazyImport`` assignments verbatim, so the
+    re-exported name carries no type information: ``from
+    sage.graphs.strongly_regular_db import GF`` then binds ``GF`` to an
+    untyped variable, ``GF(p)`` loses its callee type and ``F = GF(p)`` has
+    no member completion.  Replace the assignment with the equivalent
+    from-import (``from sage.mod import name as X``) when the target
+    module's stub exists and declares the name; anything else is left
+    untouched so no reference can become unresolved.
+    """
+    index: dict[str, set[str]] = {}
+    for pyi in output_root.rglob("*.pyi"):
+        dotted = pyi.relative_to(output_root).with_suffix("").as_posix().replace("/", ".")
+        index[dotted] = _module_declared_names(
+            pyi.read_text(encoding="utf-8", errors="replace")
+        )
+    changed = False
+    for pyi in output_root.rglob("*.pyi"):
+        text = pyi.read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()
+        rewritten = False
+        for lineno, line in enumerate(lines):
+            match = _LAZY_IMPORT_RE.match(line)
+            if not match:
+                continue
+            name, module, target = match.group(1), match.group(2), match.group(3)
+            if not module.startswith("sage."):
+                continue
+            if module not in index or target not in index[module]:
+                continue
+            lines[lineno] = f"from {module} import {target} as {name}"
+            rewritten = True
+        if rewritten:
+            pyi.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            changed = True
+    return changed
 
 
 def _lazy_import_target(value: Any) -> tuple[str, str] | None:
@@ -754,6 +828,14 @@ def generate(
         ]
         summary.factory_unresolved = factory_unresolved
         summary.dynamic_unresolved = dynamic_unresolved
+
+    # AFTER generation and enrichment: turn module-level LazyImport re-exports
+    # into real from-imports so names like strongly_regular_db.GF keep their
+    # callee types when users `from <module> import GF`.
+    if enhance_lazy_imports(output_root):
+        summary.enhanced.append(
+            "module-level LazyImport re-exports resolved to from-imports"
+        )
 
     summary.write(output_root / "generation-report.json")
     return summary

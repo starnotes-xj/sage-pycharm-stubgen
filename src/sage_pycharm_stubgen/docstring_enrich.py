@@ -855,19 +855,28 @@ def _apply_declarations(
     Returns ``(inserted_count, extra_imports)``.  Declarations re-add
     members that stubgen-pyx dropped (for example private methods skipped
     by ``include_private=False``); they are appended at the end of the
-    class body so an in-body class docstring is never displaced.
+    class body so an in-body class docstring is never displaced.  A
+    module-level ``declare`` (qualname without a dot) is appended at the
+    end of the file.
 
-    A curated ``declare`` supersedes a same-named class-body assignment.
-    Cython method aliases (``primitive_element = multiplicative_generator``
-    in ``finite_field_base.pyx``) are rendered by stubgen-pyx as bare
-    ``primitive_element = ...`` assignments, so the member would otherwise
-    be declared twice -- once as a variable, once as the curated method --
-    and PyCharm colours the reference by the orphaned assignment (orange
-    variable) instead of the method.  The stale assignment is deleted.
+    A curated ``declare`` supersedes a same-named assignment.  Two
+    stubgen-pyx patterns would otherwise leave the name declared twice
+    (once as a variable, once as the curated def), and PyCharm colours
+    the reference by the orphaned assignment (orange variable) instead
+    of the method:
+
+    - Cython method aliases (``primitive_element = multiplicative_generator``
+      in ``finite_field_base.pyx``) are rendered as bare
+      ``primitive_element = ...`` class-body assignments -- the stale
+      assignment is deleted;
+    - module-level factory chains (``GF = FiniteField =
+      FiniteFieldFactory('FiniteField')`` in ``finite_field_constructor.pyx``)
+      render as chained assignments -- the declared name is stripped from
+      the chain head (``FiniteField = ...`` survives).
     """
     declared = _declared_qualnames(tree)
     pending_class: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
-    pending_module: list[tuple[str, dict[str, Any]]] = []
+    pending_module: list[tuple[str, str, dict[str, Any]]] = []
     for qualname, entry in curated.items():
         declaration = entry.get("declare")
         if not declaration or not isinstance(declaration, str):
@@ -880,7 +889,7 @@ def _apply_declarations(
                 (parts[1], declaration, entry)
             )
         elif len(parts) == 1:
-            pending_module.append((declaration, entry))
+            pending_module.append((parts[0], declaration, entry))
 
     def normalize(declaration: str) -> str:
         """Ensure the declaration is a complete one-line def."""
@@ -891,12 +900,11 @@ def _apply_declarations(
             return declaration + " ..."
         return declaration + ": ..."
 
-    inserted = 0
-    extra_imports: list[str] = []
+    # Delete (or trim) assignments that a curated def replaces so every
+    # declared name exists exactly once (see docstring above).
+    deletions: list[tuple[int, int]] = []  # 1-based inclusive spans
+    edits: dict[int, str] = {}  # 1-based line number -> replacement text
     if pending_class:
-        # Delete class-body assignments that a curated def replaces so the
-        # member is declared exactly once (see docstring above).
-        deletions: list[tuple[int, int]] = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -918,13 +926,46 @@ def _apply_declarations(
                     matched = False
                 if matched:
                     deletions.append((stmt.lineno, stmt.end_lineno or stmt.lineno))
-        for start, end in sorted(deletions, reverse=True):
-            del lines[start - 1 : end]
-        if deletions:
-            try:
-                tree = ast.parse("\n".join(lines))
-            except SyntaxError:  # pragma: no cover - deleting a statement cannot
-                return 0, []  # break the parse; guard for defensive safety
+    if pending_module:
+        module_names = {name for name, _, _ in pending_module}
+        for stmt in tree.body:
+            if isinstance(stmt, ast.Assign):
+                target_ids = [
+                    target.id for target in stmt.targets if isinstance(target, ast.Name)
+                ]
+                first = target_ids[0] if target_ids else None
+                if first in module_names:
+                    if len(stmt.targets) > 1 and stmt.end_lineno == stmt.lineno:
+                        # Chained assignment: strip the declared name from
+                        # the head, keep the other targets (`GF = FiniteField
+                        # = X` -> `FiniteField = X`).
+                        edits[stmt.lineno] = re.sub(
+                            rf"^{re.escape(first)}\s*=\s*",
+                            "",
+                            lines[stmt.lineno - 1],
+                            count=1,
+                        )
+                    else:
+                        deletions.append((stmt.lineno, stmt.end_lineno or stmt.lineno))
+            elif (
+                isinstance(stmt, ast.AnnAssign)
+                and isinstance(stmt.target, ast.Name)
+                and stmt.target.id in module_names
+            ):
+                deletions.append((stmt.lineno, stmt.end_lineno or stmt.lineno))
+    for lineno, replacement in sorted(edits.items()):
+        lines[lineno - 1] = replacement
+    for start, end in sorted(deletions, reverse=True):
+        del lines[start - 1 : end]
+    if deletions or edits:
+        try:
+            tree = ast.parse("\n".join(lines))
+        except SyntaxError:  # pragma: no cover - deleting a statement cannot
+            return 0, []  # break the parse; guard for defensive safety
+
+    inserted = 0
+    extra_imports: list[str] = []
+    if pending_class:
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -937,7 +978,7 @@ def _apply_declarations(
                 extra_imports.extend(entry.get("imports", []))
                 inserted += 1
     if pending_module:
-        for declaration, entry in pending_module:
+        for _name, declaration, entry in pending_module:
             lines.append(normalize(declaration))
             extra_imports.extend(entry.get("imports", []))
             inserted += 1

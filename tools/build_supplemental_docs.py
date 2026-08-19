@@ -73,6 +73,20 @@ DECLARATIONS: dict[tuple[str, str], dict] = {
         "declare": "def zeta_order(self) -> Integer",
         "imports": [],
     },
+    # Module-level factory: stubgen-pyx renders `GF = FiniteField =
+    # FiniteFieldFactory('FiniteField')` as a bare assignment with no callee
+    # type, so `from sage.rings.finite_rings.finite_field_constructor import
+    # GF` (directly or via a LazyImport re-export like strongly_regular_db.GF)
+    # leaves `GF(p)` untyped.  Declare the factory; `_FieldBase` aliases the
+    # base class because `FiniteField` inside this module is the factory
+    # instance (kept by the chain-trim in _apply_declarations).
+    ("sage.rings.finite_rings.finite_field_constructor", "GF"): {
+        "declare": "def GF(*args: Any, **kwargs: Any) -> _FieldBase",
+        "imports": [
+            "from typing import Any",
+            "from sage.rings.finite_rings.finite_field_base import FiniteField as _FieldBase",
+        ],
+    },
     ("sage.rings.polynomial.polynomial_element", "Polynomial.quo_rem"): {
         "declare": "def quo_rem(self, other: Any) -> tuple[Any, Any]",
         "imports": ["from typing import Any"],

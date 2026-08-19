@@ -14,6 +14,7 @@ from sage_pycharm_stubgen.generator import (
     enhance_finite_field_stub,
     enhance_integer_mod_stub,
     enhance_integer_stub,
+    enhance_lazy_imports,
     enhance_parent_chain,
     enhance_parent_getitem,
     render_sage_all_stub,
@@ -164,6 +165,38 @@ def IntegerMod(parent, value): ...
                 "class Parent[ElementT](CategoryObject):\n"
                 "    def __getitem__(self, n: Any) -> ElementT: ...\n",
             )
+
+    def test_lazy_imports_resolved_when_target_is_declared(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "sage" / "rings" / "finite_rings"
+            target.mkdir(parents=True)
+            (target / "finite_field_constructor.pyi").write_text(
+                "def GF(*args: Any, **kwargs: Any) -> FiniteField: ...\n",
+                encoding="utf-8",
+            )
+            graphs = root / "sage" / "graphs"
+            graphs.mkdir(parents=True)
+            stub = graphs / "strongly_regular_db.pyi"
+            stub.write_text(
+                "GF = LazyImport('sage.rings.finite_rings.finite_field_constructor', 'GF')\n"
+                "Matrix = LazyImport('sage.matrix.constructor', 'Matrix')\n"
+                "to_hex = LazyImport('matplotlib.colors', 'to_hex')\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_lazy_imports(root)
+            content = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn(
+            "from sage.rings.finite_rings.finite_field_constructor import GF as GF",
+            content,
+        )
+        # Target module has no generated stub -> keep the assignment.
+        self.assertIn("Matrix = LazyImport('sage.matrix.constructor', 'Matrix')", content)
+        # Non-sage target module -> keep the assignment.
+        self.assertIn("to_hex = LazyImport('matplotlib.colors', 'to_hex')", content)
 
     def test_integer_stub_gains_arithmetic_dunders(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
