@@ -242,7 +242,12 @@ def enhance_parent_getitem(output_root: Path) -> bool:
 _INTEGER_ARITHMETIC_DUNDERS = """\
     def __add__(self, other: Any) -> Integer: ...
     def __sub__(self, other: Any) -> Integer: ...
-    def __mul__(self, other: Any) -> Integer: ...
+    @overload
+    def __mul__(self, other: Integer) -> Integer: ...
+    @overload
+    def __mul__(self, other: int) -> Integer: ...
+    @overload
+    def __mul__(self, other: T) -> T: ...
     def __mod__(self, other: Any) -> Integer: ...
     def __floordiv__(self, other: Any) -> Integer: ...
     def __pow__(self, exp: Any, mod: Any = None) -> Any: ...
@@ -258,6 +263,12 @@ def enhance_integer_stub(path: Path) -> bool:
     base class is a dynamically created category element class that static
     analysis cannot follow.  Declare the common arithmetic operators directly
     on Integer so expressions like ``Integer(2) ** Integer(8)`` type-check.
+
+    ``__mul__`` is declared as an overload set that mirrors Sage coercion:
+    ``Integer * Integer`` (and ``Integer * int``, which coercion folds back
+    into ``Integer``) stay ``Integer``, while any other operand type comes
+    back as itself -- so ``n_b * Q_a`` (scalar times an elliptic-curve
+    point) keeps the point type instead of collapsing to ``Integer``.
     """
     if not path.is_file():
         return False
@@ -269,6 +280,24 @@ def enhance_integer_stub(path: Path) -> bool:
         count=1,
         flags=re.MULTILINE,
     )
+    # Drop the converter's untyped `def __mul__(left, right)` so the member
+    # is declared exactly once (the overload set above supersedes it).
+    content = re.sub(
+        r"^    def __mul__\(left, right\):[^\n]*\n(?:        [^\n]*\n|\n)*?(?=^    def )",
+        "",
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if "T = TypeVar" not in content:
+        content = re.sub(
+            r"^(from sage\.rings\.integer import Integer)$",
+            lambda match: match.group(1)
+            + "\nfrom typing import Any, TypeVar, overload\n\nT = TypeVar(\"T\")",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
     if content == original:
         return False
     path.write_text(content, encoding="utf-8")
@@ -855,10 +884,6 @@ def generate(
             "sage.structure.parent: __getitem__ accepts generator names"
         )
     integer_stub = output_root / "sage" / "rings" / "integer.pyi"
-    if enhance_integer_stub(integer_stub):
-        summary.enhanced.append(
-            "sage.rings.integer: Integer arithmetic dunders"
-        )
 
     summary.docstrings = enrich_stubs(
         output_root,
@@ -868,8 +893,13 @@ def generate(
     )
 
     # AFTER the docstring enrichment: that pass rewrites the import block, so
-    # an import added earlier (typing.Iterator for the typed __iter__) would be
+    # an import added earlier (typing.Iterator for the typed __iter__,
+    # typing.TypeVar/overload for the Integer.__mul__ overload set) would be
     # dropped again.
+    if enhance_integer_stub(integer_stub):
+        summary.enhanced.append(
+            "sage.rings.integer: Integer arithmetic dunders"
+        )
     finite_field_stub = (
         output_root / "sage" / "rings" / "finite_rings" / "finite_field_base.pyi"
     )

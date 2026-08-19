@@ -252,7 +252,12 @@ def IntegerMod(parent, value): ...
     def test_integer_stub_gains_arithmetic_dunders(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             stub = Path(temp_dir) / "integer.pyi"
-            stub.write_text("class Integer(EuclideanDomainElement):\n    pass\n", encoding="utf-8")
+            stub.write_text(
+                "from sage.rings.integer import Integer\n\n\n"
+                "class Integer(EuclideanDomainElement):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
 
             changed = enhance_integer_stub(stub)
             result = stub.read_text(encoding="utf-8")
@@ -262,10 +267,41 @@ def IntegerMod(parent, value): ...
         self.assertIn(
             "def __pow__(self, exp: Any, mod: Any = None) -> Any: ...", result
         )
-        self.assertIn("def __mul__(self, other: Any) -> Integer: ...", result)
+        # Scalar multiplication mirrors Sage coercion: Integer * Integer (and
+        # int) stay Integer, any other operand keeps its own type.
+        self.assertIn("def __mul__(self, other: Integer) -> Integer: ...", result)
+        self.assertIn("def __mul__(self, other: int) -> Integer: ...", result)
+        self.assertIn("def __mul__(self, other: T) -> T: ...", result)
+        self.assertEqual(result.count("def __mul__("), 3)
+        self.assertIn("from typing import Any, TypeVar, overload", result)
+        self.assertIn('T = TypeVar("T")', result)
         import ast
 
         ast.parse(result)  # the enhanced stub must stay valid Python
+
+    def test_integer_stub_drops_converter_untyped_mul(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "integer.pyi"
+            stub.write_text(
+                "from sage.rings.integer import Integer\n\n\n"
+                "class Integer(EuclideanDomainElement):\n"
+                "    def __mul__(left, right):\n"
+                '        """TESTS::\n\n            sage: 3 * 2\n            6\n        """\n'
+                "    def _mul_(self, right):\n"
+                "        ...\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_integer_stub(stub)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertNotIn("def __mul__(left, right)", result)
+        self.assertIn("def _mul_(self, right):", result)
+        self.assertIn("def __mul__(self, other: T) -> T: ...", result)
+        import ast
+
+        ast.parse(result)
 
     def test_finite_field_stub_gains_characteristic(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
