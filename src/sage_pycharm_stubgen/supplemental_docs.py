@@ -2930,9 +2930,9 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回椭圆的第 i 个生成元，即 gens()[i]（依赖 gens() 已实现）。\n\n参数:\n- ``i`` -- （整数）生成元下标，0 或 1（非循环群时）\n\n返回:\nAny -- 第 i 个生成元（点）；当 gens() 未实现或下标越界时抛 NotImplementedError 或 IndexError。有限域上的曲线通常可用，返回与 gens()[i] 相同的点\n\n示例::\n\n    sage: E = EllipticCurve(GF(11), [2, 5])\n    sage: E.gen(0) == E.gens()[0]\n    True',
         },
         "EllipticCurve_generic.lift_x": {
-            "doc": '给定 x 坐标，求曲线上对应（一个或全部）的点，即解 y^2 = x^3 + a*x + b（短形式下）。CTF 中用于已知 x 恢复点坐标。方法是确定性的。\n\n参数:\n- ``x`` -- 基域（或扩域）元素\n- ``all`` -- 布尔（默认 False）；True 时返回全部（可能为空）满足该 x 的点的列表，False 时只返回一个点，若无则抛 ValueError\n- ``extend`` -- 布尔（默认 False）；True 时在需要的情况下扩展基域以包含 y 坐标（返回的可能是换基后的新曲线上的点）\n\n返回:\nEllipticCurvePoint 或 list[EllipticCurvePoint] -- all=False 时返回一个点（无解则抛 ValueError）；all=True 时返回最多 2 个点的列表（无解时为空列表）。有限域上通常恰有 0 或 2 个点\n\n示例::\n\n    sage: E = EllipticCurve(GF(101), [2, 3])\n    sage: E.lift_x(5)\n    (5 : 21 : 1)\n    sage: E.lift_x(5, all=True)\n    [(5 : 21 : 1), (5 : 80 : 1)]\n    sage: E.lift_x(3)\n    Traceback (most recent call last):\n    ...\n    ValueError: No point with x-coordinate 3 on Elliptic Curve defined by y^2 = x^3 + 2*x + 3 over Finite Field of size 101',
-            "return": 'EllipticCurvePoint | list[EllipticCurvePoint]',
-            "imports": ['from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint'],
+            "doc": '给定 x 坐标，求曲线上对应（一个或全部）的点，即解 y^2 = x^3 + a*x + b（短形式下）。CTF 中用于已知 x 恢复点坐标。方法是确定性的。\n\n参数:\n- ``x`` -- 基域（或扩域）元素\n- ``all`` -- 布尔（默认 False）；True 时返回全部（可能为空）满足该 x 的点的列表，False 时只返回一个点，若无则抛 ValueError\n- ``extend`` -- 布尔（默认 False）；True 时在需要的情况下扩展基域以包含 y 坐标（返回的可能是换基后的新曲线上的点）\n\n返回:\nEllipticCurvePoint_field 或 list[EllipticCurvePoint_field] -- all=False 时返回一个点（无解则抛 ValueError）；all=True 时返回最多 2 个点的列表（无解时为空列表）。有限域上通常恰有 0 或 2 个点。返回具体的 field 点类型（而非基类 EllipticCurvePoint），这样 xy()/order()/log() 等成员补全和类型检查才可用——基类 stub 未声明这些方法\n\n示例::\n\n    sage: E = EllipticCurve(GF(101), [2, 3])\n    sage: E.lift_x(5)\n    (5 : 21 : 1)\n    sage: E.lift_x(5, all=True)\n    [(5 : 21 : 1), (5 : 80 : 1)]\n    sage: E.lift_x(3)\n    Traceback (most recent call last):\n    ...\n    ValueError: No point with x-coordinate 3 on Elliptic Curve defined by y^2 = x^3 + 2*x + 3 over Finite Field of size 101',
+            "return": 'EllipticCurvePoint_field | list[EllipticCurvePoint_field]',
+            "imports": ['from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_field'],
         },
     },
     "sage.schemes.elliptic_curves.ell_point": {
@@ -2944,6 +2944,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "EllipticCurvePoint._acted_upon_": {
             "doc": '标量乘法（CTF 中最常用的点运算）：实现 n*P 或 P*n（n 为整数），返回标量倍点，即把 P 与自己相加 n 次。当 n=0 时返回无穷远点 O=(0:1:0)，当 n<0 时返回 |n|*P 的相反点。P*Q 两个点相乘是非法操作。\n\n参数:\n- ``other`` -- （整数）标量 n\n- ``side`` -- （整数）作用方向（左/右）\n\n返回:\nEllipticCurvePoint -- 点 n*P；与 self 在同一条曲线上。例如对 GF(5) 上 y^2 = x^3 + x + 3 的 4 阶点 P=(4,1) 有 4*P = O\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3*P\n    (4 : 4 : 1)\n    sage: 4*P\n    (0 : 1 : 0)',
             "return": 'EllipticCurvePoint',
+        },
+        "EllipticCurvePoint.xy": {
+            "doc": '返回该点的仿射 x 坐标和 y 坐标组成的二元组 (x, y)。这是从点对象里取出坐标的常用方式；若点是无穷远点 O=(0:1:0)，抛出 ZeroDivisionError。\n\n参数:\n（无参数）\n\n返回:\ntuple[Any, ...] -- 二元组 (x, y)，两个分量都是基域元素（有限域上为 GF(p) 元素），分别对应点的 x 与 y 仿射坐标；顺序为先 x 后 y。对无穷远点调用抛出 ZeroDivisionError。等价于 (P[0], P[1]) 但自动做齐次坐标归一化\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P.xy()\n    (4, 1)\n    sage: E(0).xy()\n    Traceback (most recent call last):\n    ...\n    ZeroDivisionError: rational division by zero',
+            "declare": "def xy(self) -> tuple[Any, ...]",
+            "imports": ['from typing import Any'],
         },
         "EllipticCurvePoint_field._add_": {
             "doc": '椭圆曲线上的点加法：实现 P + Q（P 为 self），返回两个点的和（弦切法则）。P - Q 由 _sub_ 实现（即 P + (-Q)），-P 由 _neg_ 实现。O = (0:1:0) 是加法单位元：P + O = P。\n\n参数:\n- ``other`` -- （点）与 self 在同一条曲线上的点\n\n返回:\nEllipticCurvePoint -- 点 P + Q，与 self 在同一条曲线上。示例中 GF(5) 上 y^2 = x^3 + x + 3 的 P=(4,1)（4 阶点）与 Q=(1,0)（2 阶点，Q=2P）满足 P+Q = 3P\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P, Q = E(4, 1), E(1, 0)\n    sage: P + Q\n    (4 : 4 : 1)\n    sage: P - Q\n    (4 : 4 : 1)\n    sage: -P\n    (4 : 4 : 1)\n    sage: P + E(0)\n    (4 : 1 : 1)',

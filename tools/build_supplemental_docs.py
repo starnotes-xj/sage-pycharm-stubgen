@@ -107,6 +107,13 @@ DECLARATIONS: dict[tuple[str, str], dict] = {
         "declare": "def __mul__(self, n: Any) -> EllipticCurvePoint",
         "imports": ["from typing import Any"],
     },
+    # xy lives on EllipticCurvePoint_field in the stubs; declare it on the
+    # base class too so any point-typed expression (e.g. the lift_x return)
+    # offers xy() in completion.
+    ("sage.schemes.elliptic_curves.ell_point", "EllipticCurvePoint.xy"): {
+        "declare": "def xy(self) -> tuple[Any, ...]",
+        "imports": ["from typing import Any"],
+    },
     ("sage.rings.polynomial.polynomial_element", "Polynomial.quo_rem"): {
         "declare": "def quo_rem(self, other: Any) -> tuple[Any, Any]",
         "imports": ["from typing import Any"],
