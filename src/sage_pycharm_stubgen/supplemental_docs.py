@@ -2866,7 +2866,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "EllipticCurve": {
             "doc": "椭圆曲线工厂函数：按多种输入形式构造椭圆曲线（曲线由长 Weierstrass 方程 y^2 + a1*x*y + a3*y = x^3 + a2*x^2 + a4*x + a6 的系数 a1..a6 唯一确定）。\n\n参数:\n- ``x`` -- 下列四种形式之一（对象）：(1) 系数列表 ``[a1,a2,a3,a4,a6]``（长度为 5，若为长度为 2 的 ``[a4,a6]`` 则视为 a1=a2=a3=0 的短形式）；(2) 环 R，此时 ``y`` 为系数列表；(3) Cremona 标签字符串如 ``'11a'``（给出 Q 上的曲线）；(4) 两个变量的 Weierstrass 多项式或带有理点的平面三次曲线。系数为整数时自动落入有理数域 Q\n- ``y`` -- 当 ``x`` 为环时的系数列表 ``[a1,a2,a3,a4,a6]``（或 ``[a4,a6]``）；当 ``x`` 为三次曲线时为一个有理点\n- ``j`` -- （关键字）j 不变量，给出 j-不变量等于该值的曲线，等价于调用 EllipticCurve_from_j\n- ``minimal_twist`` -- 布尔（默认 True）；当通过 ``j`` 构造且 ``j`` 为有理数时，是否取最小 twist\n\n返回:\nEllipticCurve_generic -- 椭圆曲线对象；当基环是有限域 GF(p)（或环 Zmod(p) 且 p 为素数）时实际返回 EllipticCurve_finite_field 实例，常用方法为 order()、cardinality()、gens()、lift_x() 等；CTF 中最常用的两种写法是 ``EllipticCurve(GF(p), [a, b])``（即 y^2 = x^3 + a*x + b，系数全在 GF(p) 上）与 ``EllipticCurve(GF(p), [a1,a2,a3,a4,a6])``\n\n示例::\n\n    sage: EllipticCurve(GF(5), [0, 0, 1, -1, 0])\n    Elliptic Curve defined by y^2 + y = x^3 + 4*x over Finite Field of size 5\n\n    sage: EllipticCurve(GF(5), [1, 3])\n    Elliptic Curve defined by y^2 = x^3 + x + 3 over Finite Field of size 5\n\n    sage: EllipticCurve(j=GF(5)(2))\n    Elliptic Curve defined by y^2 = x^3 + x + 1 over Finite Field of size 5\n\n    sage: EllipticCurve('37b2')\n    Elliptic Curve defined by y^2 + y = x^3 + x^2 - 1873*x - 31833 over Rational Field",
             "return": 'EllipticCurve_generic',
-            "imports": ['from sage.schemes.elliptic_curves.ell_generic import EllipticCurve_generic'],
+            "declare": "def EllipticCurve(*args: Any, **kwargs: Any) -> EllipticCurve_generic",
+            "imports": [
+                'from typing import Any',
+                'from sage.schemes.elliptic_curves.ell_generic import EllipticCurve_generic',
+            ],
         },
         "EllipticCurve_from_j": {
             "doc": '构造 j 不变量等于给定值 j 的椭圆曲线（EllipticCurve(j=j0) 的等价形式）。CTF 中从题目给出的 j 值还原曲线方程。\n\n参数:\n- ``j`` -- （环元素）j 不变量\n- ``minimal_twist`` -- 布尔（默认 True）；j 为有理数时是否取最小 twist（False 时构造可更快，但曲线不同）\n\n返回:\nEllipticCurve_generic -- j 不变量为给定值的椭圆曲线；j 为 GF(p) 元素时返回有限域上的曲线。给定 j 后曲线只确定到 twist 等价类，返回的是一条具体代表元\n\n示例::\n\n    sage: EllipticCurve_from_j(GF(101)(66))\n    Elliptic Curve defined by y^2 = x^3 + 18*x + 54 over Finite Field of size 101\n    sage: EllipticCurve_from_j(GF(101)(66)).j_invariant()\n    66',
@@ -2932,6 +2936,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
     },
     "sage.schemes.elliptic_curves.ell_point": {
+        "EllipticCurvePoint.__mul__": {
+            "doc": "标量乘法（CTF 中最常用的点运算）：返回 n*self（n 为整数），即把 self 与自己相加 n 次。n=0 时返回无穷远点 O=(0:1:0)，n<0 时返回 |n|*self 的相反点。注意静态类型上只对点在前（P*n）的写法生效——n*P 的返回类型由左侧整数决定（Sage coercion 的静态表达局限，运行时两者等价）。P*Q 两个点相乘是非法操作。\n\n参数:\n- ``n`` -- （整数）标量\n\n返回:\nEllipticCurvePoint -- 点 n*self；与 self 在同一条曲线上。例如 GF(5) 上 y^2 = x^3 + x + 3 的 4 阶点 P=(4,1) 有 4*P = O\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3*P\n    (4 : 4 : 1)\n    sage: 4*P\n    (0 : 1 : 0)",
+            "declare": "def __mul__(self, n: Any) -> EllipticCurvePoint",
+            "imports": ['from typing import Any'],
+        },
         "EllipticCurvePoint._acted_upon_": {
             "doc": '标量乘法（CTF 中最常用的点运算）：实现 n*P 或 P*n（n 为整数），返回标量倍点，即把 P 与自己相加 n 次。当 n=0 时返回无穷远点 O=(0:1:0)，当 n<0 时返回 |n|*P 的相反点。P*Q 两个点相乘是非法操作。\n\n参数:\n- ``other`` -- （整数）标量 n\n- ``side`` -- （整数）作用方向（左/右）\n\n返回:\nEllipticCurvePoint -- 点 n*P；与 self 在同一条曲线上。例如对 GF(5) 上 y^2 = x^3 + x + 3 的 4 阶点 P=(4,1) 有 4*P = O\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3*P\n    (4 : 4 : 1)\n    sage: 4*P\n    (0 : 1 : 0)',
             "return": 'EllipticCurvePoint',

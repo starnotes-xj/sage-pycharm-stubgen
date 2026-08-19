@@ -87,6 +87,26 @@ DECLARATIONS: dict[tuple[str, str], dict] = {
             "from sage.rings.finite_rings.finite_field_base import FiniteField as _FieldBase",
         ],
     },
+    # Module-level factory: stubgen-pyx renders `EllipticCurve =
+    # EllipticCurveFactory('...')` as a bare assignment with no callee type,
+    # so `from sage.schemes.elliptic_curves.constructor import EllipticCurve`
+    # leaves `EllipticCurve(...)` untyped (same defect as finite_field_constructor.GF).
+    ("sage.schemes.elliptic_curves.constructor", "EllipticCurve"): {
+        "declare": "def EllipticCurve(*args: Any, **kwargs: Any) -> EllipticCurve_generic",
+        "imports": [
+            "from typing import Any",
+            "from sage.schemes.elliptic_curves.ell_generic import EllipticCurve_generic",
+        ],
+    },
+    # Scalar multiplication is implemented via the coercion action
+    # `_acted_upon_`; binary-expression typing only consults `__mul__`, so
+    # `P * n` (point first) needs an explicit dunder declaration to keep the
+    # point type.  `n * P` stays typed by the left operand (Sage coercion
+    # cannot be expressed statically on that side).
+    ("sage.schemes.elliptic_curves.ell_point", "EllipticCurvePoint.__mul__"): {
+        "declare": "def __mul__(self, n: Any) -> EllipticCurvePoint",
+        "imports": ["from typing import Any"],
+    },
     ("sage.rings.polynomial.polynomial_element", "Polynomial.quo_rem"): {
         "declare": "def quo_rem(self, other: Any) -> tuple[Any, Any]",
         "imports": ["from typing import Any"],
