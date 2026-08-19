@@ -856,9 +856,17 @@ def _apply_declarations(
     members that stubgen-pyx dropped (for example private methods skipped
     by ``include_private=False``); they are appended at the end of the
     class body so an in-body class docstring is never displaced.
+
+    A curated ``declare`` supersedes a same-named class-body assignment.
+    Cython method aliases (``primitive_element = multiplicative_generator``
+    in ``finite_field_base.pyx``) are rendered by stubgen-pyx as bare
+    ``primitive_element = ...`` assignments, so the member would otherwise
+    be declared twice -- once as a variable, once as the curated method --
+    and PyCharm colours the reference by the orphaned assignment (orange
+    variable) instead of the method.  The stale assignment is deleted.
     """
     declared = _declared_qualnames(tree)
-    pending_class: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    pending_class: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
     pending_module: list[tuple[str, dict[str, Any]]] = []
     for qualname, entry in curated.items():
         declaration = entry.get("declare")
@@ -868,7 +876,9 @@ def _apply_declarations(
             continue
         parts = qualname.split(".")
         if len(parts) == 2:
-            pending_class.setdefault(parts[0], []).append((declaration, entry))
+            pending_class.setdefault(parts[0], []).append(
+                (parts[1], declaration, entry)
+            )
         elif len(parts) == 1:
             pending_module.append((declaration, entry))
 
@@ -884,10 +894,41 @@ def _apply_declarations(
     inserted = 0
     extra_imports: list[str] = []
     if pending_class:
+        # Delete class-body assignments that a curated def replaces so the
+        # member is declared exactly once (see docstring above).
+        deletions: list[tuple[int, int]] = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
-            for declaration, entry in pending_class.pop(node.name, []):
+            pending = pending_class.get(node.name)
+            if not pending:
+                continue
+            names = {member for member, _, _ in pending}
+            for stmt in node.body:
+                if isinstance(stmt, ast.Assign):
+                    matched = any(
+                        isinstance(target, ast.Name) and target.id in names
+                        for target in stmt.targets
+                    )
+                elif isinstance(stmt, ast.AnnAssign) and isinstance(
+                    stmt.target, ast.Name
+                ):
+                    matched = stmt.target.id in names
+                else:
+                    matched = False
+                if matched:
+                    deletions.append((stmt.lineno, stmt.end_lineno or stmt.lineno))
+        for start, end in sorted(deletions, reverse=True):
+            del lines[start - 1 : end]
+        if deletions:
+            try:
+                tree = ast.parse("\n".join(lines))
+            except SyntaxError:  # pragma: no cover - deleting a statement cannot
+                return 0, []  # break the parse; guard for defensive safety
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for _member, declaration, entry in pending_class.pop(node.name, []):
                 if not node.body:
                     continue
                 anchor = node.body[-1].end_lineno or node.body[-1].lineno

@@ -1601,8 +1601,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "FiniteField.primitive_element": {
             "doc": "返回有限域的本原元（乘法群 F* 的生成元）。与 multiplicative_generator() 是同一个方法的别名（primitive_element = multiplicative_generator）。\n\n返回:\n域元素 -- 乘法阶为 q-1 的元素。\n\n示例::\n\n    sage: GF(11^3, 'a').primitive_element()\n    a",
-            "declare": 'def primitive_element(self) -> Any',
-            "imports": ['from typing import Any'],
+            "declare": "def primitive_element(self) -> FiniteField_givaroElement | FiniteField_ntl_gf2eElement | FiniteFieldElement_pari_ffelt",
+            "imports": [
+                'from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement',
+                'from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement',
+                'from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt',
+            ],
         },
         "FiniteField.random_element": {
             "doc": "返回域中的一个随机元素。\n\n参数:\n- ``*args, **kwds`` -- 透传给底层向量空间 random_element() 的参数（如 prob=0 时以概率 0 取非零元，即恒返回 0；注意 prob 仅部分实现支持，givaro 实现会忽略它）\n\n返回:\n域元素 -- 随机元素（结果随机）。\n\n示例::\n\n    sage: GF(19^4, 'a').random_element(prob=0)\n    0",

@@ -457,6 +457,48 @@ class EnrichStubFileTests(unittest.TestCase):
         self.assertLess(content.index('"""Class docstring stays first."""'), content.index("def _first_ngens"))
         self.assertEqual(summary.declarations_added, 1)
 
+    def test_curated_declare_replaces_same_named_class_assignment(self) -> None:
+        # Regression: Cython method aliases (``primitive_element =
+        # multiplicative_generator`` in finite_field_base.pyx) are rendered
+        # by stubgen-pyx as bare ``primitive_element = ...`` assignments.
+        # The curated declare used to be appended alongside, declaring the
+        # member twice (variable + method) -- PyCharm then colours the
+        # reference by the orphaned assignment (variable) instead of the
+        # method.  The stale assignment must be deleted.
+        stub = (
+            "from typing import Any\n\n\n"
+            "class FiniteField:\n"
+            "    primitive_element = ...\n"
+            "    __len__ = ...\n"
+            "    def multiplicative_generator(self) -> Any: ...\n"
+        )
+        curated = {
+            "FiniteField.primitive_element": {
+                "doc": "返回本原元。",
+                "declare": (
+                    "def primitive_element(self) -> "
+                    "FiniteField_givaroElement | FiniteField_ntl_gf2eElement | "
+                    "FiniteFieldElement_pari_ffelt"
+                ),
+                "imports": [],
+            }
+        }
+        content, summary = self._enrich(stub, None, curated)
+
+        compile(content, "sample.pyi", "exec")
+        self.assertNotIn("primitive_element = ...", content)
+        self.assertIn(
+            "def primitive_element(self) -> "
+            "FiniteField_givaroElement | FiniteField_ntl_gf2eElement | "
+            "FiniteFieldElement_pari_ffelt:",
+            content,
+        )
+        # The member is declared exactly once after the fix.
+        self.assertEqual(content.count("primitive_element"), 1)
+        # An unrelated class-body assignment is left alone.
+        self.assertIn("__len__ = ...", content)
+        self.assertEqual(summary.declarations_added, 1)
+
     def test_def_with_own_docstring_does_not_steal_following_string(self) -> None:
         # Regression: a def carrying its docstring used to delete it and
         # adopt the following sibling string (often a class docstring).

@@ -54,8 +54,16 @@ DECLARATIONS: dict[tuple[str, str], dict] = {
         "imports": [],
     },
     ("sage.rings.finite_rings.finite_field_base", "FiniteField.primitive_element"): {
-        "declare": "def primitive_element(self) -> Any",
-        "imports": ["from typing import Any"],
+        "declare": (
+            "def primitive_element(self) -> "
+            "FiniteField_givaroElement | FiniteField_ntl_gf2eElement | "
+            "FiniteFieldElement_pari_ffelt"
+        ),
+        "imports": [
+            "from sage.rings.finite_rings.element_givaro import FiniteField_givaroElement",
+            "from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement",
+            "from sage.rings.finite_rings.element_pari_ffelt import FiniteFieldElement_pari_ffelt",
+        ],
     },
     ("sage.rings.finite_rings.finite_field_base", "FiniteField.zeta"): {
         "declare": "def zeta(self, n: Any = None) -> Any",
