@@ -2182,10 +2182,22 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
     },
     "sage.rings.integer_ring": {
+        "IntegerRing_class.__call__": {
+            "doc": '把值转换为 Sage 整数：ZZ(x) 按 x 的类型做强制转换，字符串可指定进制。这是把 CTF 题目里的明文整数/十六进制串送进 Sage 世界的标准入口；ZZ(35) / ZZ(3) 之类构造也为后续 __truediv__ 推断提供 Integer 接收者。stubgen-pyx 丢弃了该成员，此条目重新声明，否则 ZZ(...) 断链成无类型。\n\n参数:\n- ``x`` -- 要转换的值（int/str/float/bytes 等，缺省 None 得 0）\n- ``n`` -- 进制（默认 0 表示按 x 自身的字面语义；仅对字符串生效，如 16）\n\n返回:\nInteger -- 转换得到的 Sage 整数；无法转换时抛 TypeError\n\n示例::\n\n    sage: ZZ(35)\n    35\n    sage: ZZ("ff", 16)\n    255\n    sage: ZZ(35) / ZZ(3)\n    35/3',
+            "declare": "def __call__(self, x=None, n=0) -> Integer",
+            "imports": ['from sage.rings.integer import Integer'],
+        },
         "crt_basis": {
             "doc": '计算两两互素整数列表 X 的中国剩余定理基：返回 E 使得 E[i] ≡ 1 (mod X[i]) 且对一切 j != i 有 E[i] ≡ 0 (mod X[j])。\n\n参数:\n- ``X`` -- 两两互素的 Sage Integer 列表（纯 Python int 列表会报错，需先转 Integer）\n- ``xgcd`` -- 可选参数，被忽略\n\n返回:\nlist[Integer] -- 与 X 等长的整数列表 E，长度即 X 的长度；任意剩余列表 A（A[i] 按 X[i] 理解）的 CRT 解为 sum(E[i]*A[i])。注意 E[i] 可能为负数（-1 的系数经模运算仍成立）。\n\n示例::\n\n    sage: X = [11, 20, 31, 51]\n    sage: E = crt_basis(X); E\n    [63240, -156519, 168300, -75020]\n    sage: [E[0] % 11, E[1] % 20, E[2] % 31, E[3] % 51]\n    [1, 1, 1, 1]',
             "return": 'list[Integer]',
             "imports": ['from sage.rings.integer import Integer'],
+        },
+    },
+    "sage.rings.rational_field": {
+        "RationalField.__call__": {
+            "doc": '把值转换为 Sage 有理数：QQ(x) 是进入有理数域的标准入口，字符串支持 "p/q" 形式并可指定进制。QQ 与 ZZ 的构造在 RSA/ECC 参数推导里经常搭配出现。stubgen-pyx 丢弃了该成员，此条目重新声明，否则 QQ(...) 断链成无类型。\n\n参数:\n- ``x`` -- 要转换的值（int/str/float/Rational 等，默认 0）\n- ``base`` -- 进制（默认 10；仅对字符串生效）\n\n返回:\nRational -- 转换得到的精确有理数（浮点会被精确化为分数）；无法转换时抛 TypeError\n\n示例::\n\n    sage: QQ(7)\n    7\n    sage: QQ("3/7")\n    3/7\n    sage: QQ(0.5)\n    1/2',
+            "declare": "def __call__(self, x=0, base=10) -> Rational",
+            "imports": ['from sage.rings.rational import Rational'],
         },
     },
     "sage.rings.polynomial.polynomial_element": {
@@ -2937,6 +2949,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'Sequence[Any]',
             "imports": ['from sage.structure.sequence import Sequence'],
         },
+        "EllipticCurve_finite_field.random_point": {
+            "doc": "在曲线上均匀随机取一个有理点（可能取到无穷远点 O）。CTF 中用于随机采样基点/nonce 或生成测试向量；与 E.random_element() 等价。stubgen-pyx 丢弃了该方法（源里只见到 doctest 引用），此条目把它重新声明为有限域点类型，否则 P = E.random_point() 断链成无类型，后续 n*P 也跟着失效。\n\n参数:\n（无参数）\n\n返回:\nEllipticCurvePoint_finite_field -- 曲线上的随机有理点；运行时具体类是带范畴的动态子类（EllipticCurvePoint_finite_field_with_category），静态契约用 EllipticCurvePoint_finite_field。取到 O 的概率约为 1/(2q+1)\n\n示例::\n\n    sage: E = EllipticCurve(GF(101), [2, 3])\n    sage: P = E.random_point()\n    sage: P in E\n    True\n    sage: type(P)\n    <class 'sage.schemes.elliptic_curves.ell_point.EllipticCurvePoint_finite_field_with_category'>",
+            "declare": "def random_point(self) -> EllipticCurvePoint_finite_field",
+            "imports": ['from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_finite_field'],
+        },
         "EllipticCurve_finite_field.rational_points": {
             "doc": '返回该椭圆曲线上的全部有理点列表（包含无穷远点 O），是 points() 的别名（源码里 rational_points = points）。结果被缓存并排序。CTF 中当 p 很小时用它穷举所有点。\n\n参数:\n（无参数）\n\n返回:\nSequence[Any] -- 不可变、已排序的点序列，包含无穷远点 (0:1:0) 在内的所有有理点；长度为曲线的 order()。\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: E.rational_points()\n    [(0 : 1 : 0), (1 : 0 : 1), (4 : 1 : 1), (4 : 4 : 1)]',
             "declare": "def rational_points(self, algorithm=None, extension_degree=1) -> Sequence[Any]",
@@ -2965,13 +2982,32 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
     },
     "sage.schemes.elliptic_curves.ell_point": {
         "EllipticCurvePoint.__mul__": {
-            "doc": "标量乘法（CTF 中最常用的点运算）：返回 n*self（n 为整数），即把 self 与自己相加 n 次。n=0 时返回无穷远点 O=(0:1:0)，n<0 时返回 |n|*self 的相反点。注意静态类型上只对点在前（P*n）的写法生效——n*P 的返回类型由左侧整数决定（Sage coercion 的静态表达局限，运行时两者等价）。P*Q 两个点相乘是非法操作。\n\n参数:\n- ``n`` -- （整数）标量\n\n返回:\nEllipticCurvePoint -- 点 n*self；与 self 在同一条曲线上。例如 GF(5) 上 y^2 = x^3 + x + 3 的 4 阶点 P=(4,1) 有 4*P = O\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3*P\n    (4 : 4 : 1)\n    sage: 4*P\n    (0 : 1 : 0)",
+            "doc": "标量乘法（CTF 中最常用的点运算）：返回 n*self（n 为整数），即把 self 与自己相加 n 次。n=0 时返回无穷远点 O=(0:1:0)，n<0 时返回 |n|*self 的相反点。点在后（n*P）的写法由域上点类的 ``__rmul__`` 声明承接，同样推得点类型；两种写法运行时等价。P*Q 两个点相乘是非法操作。\n\n参数:\n- ``n`` -- （整数）标量\n\n返回:\nEllipticCurvePoint -- 点 n*self；与 self 在同一条曲线上。例如 GF(5) 上 y^2 = x^3 + x + 3 的 4 阶点 P=(4,1) 有 4*P = O\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3*P\n    (4 : 4 : 1)\n    sage: 4*P\n    (0 : 1 : 0)",
             "declare": "def __mul__(self, n: Any) -> EllipticCurvePoint",
             "imports": ['from typing import Any'],
+        },
+        "EllipticCurvePoint_field.__mul__": {
+            "doc": "标量乘法 P*n（n 为整数）：域上的点类把返回值收紧为 EllipticCurvePoint_field（在 MRO 上优先于基类 EllipticCurvePoint 的声明），使 P*5 这类写法也能拿到 order()/xy() 可补全的点类型。\n\n参数:\n- ``n`` -- （整数）标量\n\n返回:\nEllipticCurvePoint_field -- 点 n*self；与 self 在同一条曲线上\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P * 3\n    (4 : 4 : 1)",
+            "declare": "def __mul__(self, n: Any) -> EllipticCurvePoint_field",
+            "imports": ['from typing import Any'],
+        },
+        "EllipticCurvePoint_field.__rmul__": {
+            "doc": '标量乘法 n*P（n 为整数）：Python 在 int.__mul__(P) 返回 NotImplemented 后调用 P.__rmul__(n)，运行时经 Sage coercion 模型落到 _acted_upon_。此声明让 5 * P 这类"整数在左"的写法静态推得点类型（否则 Q 断链成无类型，Q.xy()/Q.order() 全部无补全）。\n\n参数:\n- ``n`` -- （整数）标量\n\n返回:\nEllipticCurvePoint_field -- 点 n*self；与 self 在同一条曲线上。例如 GF(5) 上 4 阶点 P=(4,1) 有 4*P = O=(0:1:0)\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3 * P\n    (4 : 4 : 1)\n    sage: 4 * P\n    (0 : 1 : 0)',
+            "declare": "def __rmul__(self, n: Any) -> EllipticCurvePoint_field",
+            "imports": ['from typing import Any'],
+        },
+        "EllipticCurvePoint_field.order": {
+            "doc": '返回该点的阶：最小的正整数 n 使 n*self = O（无穷远点）。CTF 中判断基点阶是否为大素数（曲线合法）或等于曲线阶（异常曲线，可 SMART 攻击）。\n\n参数:\n- ``algorithm`` -- （可选）算法选择，一般留空\n\n返回:\nInteger -- 点的阶；无穷远点的阶为 1\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P.order()\n    4',
+            "return": 'Integer',
+            "imports": ['from sage.rings.integer import Integer'],
         },
         "EllipticCurvePoint._acted_upon_": {
             "doc": '标量乘法（CTF 中最常用的点运算）：实现 n*P 或 P*n（n 为整数），返回标量倍点，即把 P 与自己相加 n 次。当 n=0 时返回无穷远点 O=(0:1:0)，当 n<0 时返回 |n|*P 的相反点。P*Q 两个点相乘是非法操作。\n\n参数:\n- ``other`` -- （整数）标量 n\n- ``side`` -- （整数）作用方向（左/右）\n\n返回:\nEllipticCurvePoint -- 点 n*P；与 self 在同一条曲线上。例如对 GF(5) 上 y^2 = x^3 + x + 3 的 4 阶点 P=(4,1) 有 4*P = O\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3*P\n    (4 : 4 : 1)\n    sage: 4*P\n    (0 : 1 : 0)',
             "return": 'EllipticCurvePoint',
+        },
+        "EllipticCurvePoint.is_zero": {
+            "doc": '判断该点是否为无穷远点 O=(0:1:0)。CTF 中用于检验标量乘结果（如 (n*P).is_zero() 判断 P 的阶整除 n）。运行时该方法存在但 stubgen-pyx 未收录，此条目重新声明并给出 bool 返回。\n\n参数:\n（无参数）\n\n返回:\nbool -- True 表示该点是无穷远点\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P.is_zero()\n    False\n    sage: (4 * P).is_zero()\n    True',
+            "declare": "def is_zero(self) -> bool",
         },
         "EllipticCurvePoint.xy": {
             "doc": '返回该点的仿射 x 坐标和 y 坐标组成的二元组 (x, y)。这是从点对象里取出坐标的常用方式；若点是无穷远点 O=(0:1:0)，抛出 ZeroDivisionError。\n\n参数:\n（无参数）\n\n返回:\ntuple[Any, ...] -- 二元组 (x, y)，两个分量都是基域元素（有限域上为 GF(p) 元素），分别对应点的 x 与 y 仿射坐标；顺序为先 x 后 y。对无穷远点调用抛出 ZeroDivisionError。等价于 (P[0], P[1]) 但自动做齐次坐标归一化\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P.xy()\n    (4, 1)\n    sage: E(0).xy()\n    Traceback (most recent call last):\n    ...\n    ZeroDivisionError: rational division by zero',

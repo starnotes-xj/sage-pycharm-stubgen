@@ -233,6 +233,83 @@ class EnrichStubFileTests(unittest.TestCase):
         self.assertEqual(summary.return_types_added, 1)
         compile(content, "sample.pyi", "exec")
 
+    def test_acceptance_singleton_call_and_point_reflected_entries_land(self) -> None:
+        from sage_pycharm_stubgen.supplemental_docs import SUPPLEMENTAL_DOCS
+
+        # [4] ZZ(35) / ZZ(3): ring singleton __call__ upgrade
+        zz_stub = (
+            "from sage.rings.integer import Integer\n\n\n"
+            "ZZ = IntegerRing_class()\n\n\n"
+            "class IntegerRing_class:\n"
+            "    def gen(self, n=0): ...\n"
+        )
+        content, summary = self._enrich(
+            zz_stub,
+            None,
+            SUPPLEMENTAL_DOCS["sage.rings.integer_ring"],
+        )
+        self.assertIn("def __call__(self, x=None, n=0) -> Integer:", content)
+        self.assertEqual(summary.declarations_added, 1)
+        compile(content, "integer_ring.pyi", "exec")
+
+        qq_stub = (
+            "from sage.rings.rational import Rational\n\n\n"
+            "QQ = RationalField()\n\n\n"
+            "class RationalField:\n"
+            "    def gen(self, n=0): ...\n"
+        )
+        content, _ = self._enrich(
+            qq_stub,
+            None,
+            SUPPLEMENTAL_DOCS["sage.rings.rational_field"],
+        )
+        self.assertIn("def __call__(self, x=0, base=10) -> Rational:", content)
+        compile(content, "rational_field.pyi", "exec")
+
+        # [7] 5 * P: random_point + field-level __mul__/__rmul__ + is_zero/order
+        curve_stub = (
+            "from sage.schemes.elliptic_curves.ell_point import"
+            " EllipticCurvePoint_finite_field\n\n\n"
+            "class EllipticCurve_finite_field:\n"
+            "    def cardinality(self): ...\n"
+        )
+        content, summary = self._enrich(
+            curve_stub,
+            None,
+            SUPPLEMENTAL_DOCS["sage.schemes.elliptic_curves.ell_finite_field"],
+        )
+        self.assertIn(
+            "def random_point(self) -> EllipticCurvePoint_finite_field:",
+            content,
+        )
+        # order/rational_points/random_point: all three re-added declares land
+        self.assertEqual(summary.declarations_added, 3)
+        compile(content, "ell_finite_field.pyi", "exec")
+
+        point_stub = (
+            "from typing import Any\n\n\n"
+            "class EllipticCurvePoint:\n"
+            "    def xy(self) -> tuple[Any, ...]: ...\n\n\n"
+            "class EllipticCurvePoint_field(EllipticCurvePoint):\n"
+            "    def order(self, algorithm=None): ...\n"
+        )
+        content, _ = self._enrich(
+            point_stub,
+            None,
+            SUPPLEMENTAL_DOCS["sage.schemes.elliptic_curves.ell_point"],
+        )
+        self.assertIn("def is_zero(self) -> bool:", content)
+        self.assertIn(
+            "def __rmul__(self, n: Any) -> EllipticCurvePoint_field:",
+            content,
+        )
+        self.assertIn(
+            "def __mul__(self, n: Any) -> EllipticCurvePoint_field:",
+            content,
+        )
+        self.assertIn("def order(self, algorithm=None) -> Integer:", content)
+        compile(content, "ell_point.pyi", "exec")
+
     def test_curated_element_union_return_with_imports(self) -> None:
         stub = (
             "from sage.rings.ring import Field\n\n\n"
