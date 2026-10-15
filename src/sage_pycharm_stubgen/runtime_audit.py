@@ -27,6 +27,7 @@ import ast
 import dataclasses
 import importlib
 import inspect
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -257,6 +258,23 @@ def audit_stub_tree(
     reported, never fatal.
     """
     summary = RuntimeAuditSummary()
+    # Some Sage modules parse sys.argv at import time and would mistake our
+    # own CLI flags for sage CLI arguments, aborting the audit.  Hide them
+    # for the duration; argv is restored no matter how the loop exits.
+    saved_argv = list(sys.argv)
+    sys.argv = [saved_argv[0] if saved_argv else "<sage-pycharm-stubgen>"]
+    try:
+        _audit_modules(stub_root, importer, summary)
+    finally:
+        sys.argv = saved_argv
+    return summary
+
+
+def _audit_modules(
+    stub_root: Path,
+    importer: Callable[[str], object],
+    summary: RuntimeAuditSummary,
+) -> None:
     for stub in sorted(stub_root.rglob("*.pyi")):
         module_name = stub_module_name(stub_root, stub)
         if module_name is None:

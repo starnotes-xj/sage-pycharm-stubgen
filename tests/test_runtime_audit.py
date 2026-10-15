@@ -162,5 +162,36 @@ class RuntimeAuditTests(unittest.TestCase):
             self.assertIn("def value(self) -> Any: ...", rewritten)
 
 
+    def test_importers_see_sanitized_argv(self) -> None:
+        import sys as _sys
+
+        class Demo:
+            def value(self):
+                return 1
+
+        seen: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module_dir = root / "sage" / "demo"
+            module_dir.mkdir(parents=True)
+            (module_dir / "mod.pyi").write_text(
+                "class Demo:\n    def known(self): ...\n", encoding="utf-8"
+            )
+
+            def importer(name: str):
+                seen.append(list(_sys.argv))
+                return _runtime(Demo=Demo)
+
+            saved = list(_sys.argv)
+            _sys.argv = [saved[0], "--install", "--runtime-audit"]
+            try:
+                summary = audit_stub_tree(root, importer=importer)
+            finally:
+                _sys.argv = saved
+
+        self.assertEqual(summary.files_touched, 1)
+        self.assertEqual(seen, [[saved[0]]])
+
+
 if __name__ == "__main__":
     unittest.main()
