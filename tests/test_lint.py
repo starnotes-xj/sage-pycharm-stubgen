@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sage_pycharm_stubgen.lint import lint_generated_stubs, lint_source
+from sage_pycharm_stubgen.lint import (
+    fix_unresolved_annotations,
+    lint_generated_stubs,
+    lint_source,
+)
 
 
 class LintTests(unittest.TestCase):
@@ -79,6 +83,43 @@ class LintTests(unittest.TestCase):
             errors, warnings = lint_generated_stubs(root, check_curated=False)
             self.assertEqual([f.kind for f in errors], ["duplicate-member"])
             self.assertEqual([f.kind for f in warnings], ["unresolved-annotation"])
+
+    def test_fix_unresolved_annotations_adds_unique_import(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "sage" / "graphs").mkdir(parents=True)
+            (root / "sage" / "graphs" / "digraph.pyi").write_text(
+                "class DiGraph: ...\n", encoding="utf-8"
+            )
+            (root / "sage" / "combinat").mkdir(parents=True)
+            (root / "sage" / "combinat" / "permutation.pyi").write_text(
+                "from typing import Any\n\n\n"
+                "class Permutation:\n"
+                "    def to_digraph(self) -> DiGraph: ...\n",
+                encoding="utf-8",
+            )
+            # A second module declaring DiGraph would make the name ambiguous.
+            (root / "sage" / "other").mkdir(parents=True)
+            (root / "sage" / "other" / "clone.pyi").write_text(
+                "DiGraph = int\n", encoding="utf-8"
+            )
+
+            fixed = fix_unresolved_annotations(root)
+            self.assertEqual(fixed, 0)  # ambiguous: two modules declare it
+
+            (root / "sage" / "other" / "clone.pyi").unlink()
+            fixed = fix_unresolved_annotations(root)
+            self.assertEqual(fixed, 1)
+            text = (root / "sage" / "combinat" / "permutation.pyi").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("from sage.graphs.digraph import DiGraph", text)
+            _errors, warnings = lint_generated_stubs(root, check_curated=False)
+            self.assertEqual(
+                [f.kind for f in warnings],
+                [],
+                "the DiGraph warning must disappear after the fix",
+            )
 
 
 if __name__ == "__main__":

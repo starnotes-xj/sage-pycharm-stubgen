@@ -43,6 +43,7 @@ from .supplemental_docs import SUPPLEMENTAL_DOCS
 _BUILTIN_NAMES = frozenset(
     {
         "Any",
+        "BaseException",
         "None",
         "True",
         "False",
@@ -546,6 +547,26 @@ def _declared_qualnames(tree: ast.AST) -> set[str]:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
             prefix = _qualified_prefix(node, parents)
             names.add(f"{prefix}.{node.name}" if prefix else node.name)
+    return names
+
+
+def _declared_names_with_assignments(tree: ast.AST) -> set[str]:
+    """Declared names including module/class-level assignment targets.
+
+    ``_declared_qualnames`` only sees def/class; a curated entry for a name
+    that lands as an assignment (``prime_factors = prime_divisors``,
+    ``IntegerModRing = IntegerModFactory(...)``) is present in the stub, not
+    missing — coverage checks must count it.
+    """
+    parents = _parents(tree)
+    names = _declared_qualnames(tree)
+    for node, parent in parents.items():
+        if not (isinstance(node, ast.Assign) and isinstance(parent, (ast.Module, ast.ClassDef))):
+            continue
+        prefix = _qualified_prefix(parent, parents) if isinstance(parent, ast.ClassDef) else ""
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                names.add(f"{prefix}.{target.id}" if prefix else target.id)
     return names
 
 
@@ -1093,7 +1114,7 @@ def _unmatched_curated_entries(output_root: Path) -> tuple[list[str], list[str]]
             tree = ast.parse(stub.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, SyntaxError):
             continue
-        declared = _declared_qualnames(tree)
+        declared = _declared_names_with_assignments(tree)
         for qualname in entries:
             if qualname not in declared:
                 unmatched.append(f"{module}.{qualname}")

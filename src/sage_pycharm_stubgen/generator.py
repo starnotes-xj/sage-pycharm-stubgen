@@ -17,7 +17,7 @@ from typing import Any, Iterable
 
 from .factory_inference import FactoryInference, factory_return_map, infer_factory_returns
 from .docstring_enrich import EnrichmentSummary, enrich_stubs, _insert_imports, _quote
-from .lint import lint_generated_stubs
+from .lint import fix_unresolved_annotations, lint_generated_stubs
 from .merge import merge_generated_stubs
 from .supplemental_docs import SUPPLEMENTAL_DOCS
 from .py_renderer import render_py_stub
@@ -1059,6 +1059,11 @@ def generate(
         summary.enhanced.append(
             f"merged {merge_result.removed_declarations} duplicate declaration(s) "
             f"across {merge_result.changed_files} stub(s)"
+        )
+    fixed_annotations = fix_unresolved_annotations(output_root)
+    if fixed_annotations:
+        summary.enhanced.append(
+            f"resolved {fixed_annotations} annotation import(s) uniquely within the stub tree"
         )
     lint_errors, lint_warnings = lint_generated_stubs(output_root)
     summary.lint_errors = [str(finding) for finding in lint_errors]

@@ -250,3 +250,77 @@ def lint_generated_stubs(
             for module in stubless
         )
     return errors, warnings
+
+
+def _unresolved_names(text: str, relative: str) -> set[str]:
+    """Names flagged by unresolved-annotation findings in one stub."""
+    missing: set[str] = set()
+    for finding in lint_source(text, relative):
+        if finding.kind != "unresolved-annotation":
+            continue
+        _, _, names = finding.detail.partition(":")
+        missing.update(name.strip() for name in names.split(",") if name.strip())
+    return missing
+
+
+def fix_unresolved_annotations(output_root: Path) -> int:
+    """Add imports for annotation names that resolve uniquely in the tree.
+
+    The converter copies Cython-declared annotation names verbatim without
+    their imports (``-> DiGraph``, ``-> Graphics``).  When a flagged name is
+    declared by exactly ONE other stub module, the missing from-import is
+    inserted; ambiguous or unknown names (Cython C types such as ``FEL`` or
+    ``mp_exp_t``) stay untouched and remain lint warnings.
+    """
+    from .docstring_enrich import _insert_imports
+    from .generator import _module_declared_names
+
+    root = output_root / "sage"
+    if not root.is_dir():
+        return 0
+    files: dict[str, Path] = {}
+    index: dict[str, set[str]] = {}
+    for pyi in root.rglob("*.pyi"):
+        dotted = pyi.relative_to(output_root).with_suffix("").as_posix().replace("/", ".")
+        files[dotted] = pyi
+        try:
+            index[dotted] = _module_declared_names(
+                pyi.read_text(encoding="utf-8", errors="replace")
+            )
+        except (OSError, UnicodeError):
+            index[dotted] = set()
+    by_name: dict[str, list[str]] = {}
+    for dotted, names in index.items():
+        for name in names:
+            by_name.setdefault(name, []).append(dotted)
+
+    fixed = 0
+    for dotted, pyi in files.items():
+        try:
+            text = pyi.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        missing = _unresolved_names(text, pyi.relative_to(output_root).as_posix())
+        if not missing:
+            continue
+        imports = []
+        for name in sorted(missing):
+            modules = [m for m in by_name.get(name, []) if m != dotted]
+            if len(modules) == 1:
+                imports.append(f"from {modules[0]} import {name}")
+        if not imports:
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        lines = text.splitlines()
+        _insert_imports(lines, tree, imports)
+        merged = "\n".join(lines) + "\n"
+        try:
+            ast.parse(merged)  # fail closed
+        except SyntaxError:
+            continue
+        pyi.write_text(merged, encoding="utf-8")
+        fixed += len(imports)
+    return fixed

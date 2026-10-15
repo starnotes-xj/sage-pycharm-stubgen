@@ -110,10 +110,12 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "binomial": {
             "doc": '二项式系数 C(x, m) = x*(x-1)*...*(x-m+1)/m!（sage.all 中导出的是本模块的 Function_binomial 实例）。\n\n参数:\n- ``x``, ``m`` -- 数或符号表达式；m 或 x-m 须为整数；m < 0 时返回 0\n\n返回:\nint -- 整数入参时返回 Python int；符号入参时返回符号表达式。注：sage.arith.misc 内另有同名函数 binomial，本条目对应 sage.all 与 sage.functions.other 中的版本。\n\n示例::\n\n    sage: binomial(5, 2)\n    10\n    sage: binomial(2, 0)\n    1',
             "return": 'int',
+            "declare": "def binomial(x, m, **kwds) -> int",
         },
         "factorial": {
-            "doc": '阶乘 n! = 1*2*...*n（sage.all 中导出的是本模块 Function_factorial 实例，即 GinacFunction 子类）。\n\n参数:\n- ``n`` -- 非负整数（或符号表达式）\n\n返回:\nint -- 整数入参时返回 Python int；符号入参时返回符号表达式。注：sage.arith.misc 内另有同名函数 factorial（整数入参返回 Sage Integer），本条目对应 sage.all 中的版本。\n\n示例::\n\n    sage: factorial(5)\n    120\n    sage: factorial(0)\n    1',
+            "doc": '阶乘 n! = 1*2*...*n（sage.all 中导出的是本模块的 Function_factorial 实例，即 GinacFunction 子类）。\n\n参数:\n- ``n`` -- 非负整数（或符号表达式）\n\n返回:\nint -- 整数入参时返回 Python int；符号入参时返回符号表达式。注：sage.arith.misc 内另有同名函数 factorial（整数入参返回 Sage Integer），本条目对应 sage.all 中的版本。\n\n示例::\n\n    sage: factorial(5)\n    120\n    sage: factorial(0)\n    1',
             "return": 'int',
+            "declare": "def factorial(n, algorithm='gmp') -> int",
         },
     },
     "sage.groups.generic": {
