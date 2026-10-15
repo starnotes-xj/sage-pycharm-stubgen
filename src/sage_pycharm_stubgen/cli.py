@@ -126,6 +126,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--runtime-audit",
+        action="store_true",
+        help=(
+            "After generation, import each module in the live Sage interpreter and "
+            "append declarations for public members the source scan missed "
+            "(real inspect signatures where available, -> Any returns otherwise)"
+        ),
+    )
 
     subparsers = parser.add_subparsers(dest="command")
     preparse_parser = subparsers.add_parser(
@@ -527,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
         use_runtime_docs=not args.no_runtime_docs,
         verbose=args.verbose,
         doc_language=args.doc_language,
+        runtime_audit=args.runtime_audit,
     )
     print(f"SageMath: {summary.sage_version}")
     print(f"Discovered: {summary.discovered}")

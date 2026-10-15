@@ -19,6 +19,7 @@ from .factory_inference import FactoryInference, factory_return_map, infer_facto
 from .docstring_enrich import EnrichmentSummary, enrich_stubs, _insert_imports, _quote
 from .lint import fix_unresolved_annotations, lint_generated_stubs
 from .merge import merge_generated_stubs
+from .runtime_audit import RuntimeAuditSummary
 from .supplemental_docs import SUPPLEMENTAL_DOCS
 from .py_renderer import render_py_stub
 
@@ -82,6 +83,7 @@ class GenerationSummary:
     docstrings: EnrichmentSummary | None = None
     failures: list[Failure] = field(default_factory=list)
     merged_duplicates: int = 0
+    runtime_audit: "RuntimeAuditSummary | None" = None
     lint_errors: list[str] = field(default_factory=list)
     lint_warnings: list[str] = field(default_factory=list)
 
@@ -886,6 +888,7 @@ def generate(
     use_runtime_docs: bool = True,
     verbose: bool = False,
     doc_language: str = "zh",
+    runtime_audit: bool = False,
 ) -> GenerationSummary:
     if doc_language not in {"zh", "en"}:
         raise ValueError(f"Unsupported doc language: {doc_language!r}")
@@ -1065,6 +1068,19 @@ def generate(
         summary.enhanced.append(
             f"resolved {fixed_annotations} annotation import(s) uniquely within the stub tree"
         )
+    if runtime_audit:
+        from .runtime_audit import audit_stub_tree
+
+        audit = audit_stub_tree(output_root)
+        summary.runtime_audit = audit
+        if audit.members_added:
+            summary.enhanced.append(
+                f"runtime audit added {audit.methods_added} method(s), "
+                f"{audit.properties_added} propert(y/ies) and {audit.attributes_added} "
+                f"attribute(s) across {audit.files_touched} stub(s) "
+                f"({audit.fallback_signatures} fallback signature(s), "
+                f"{len(audit.modules_skipped)} unimportable module(s) skipped)"
+            )
     lint_errors, lint_warnings = lint_generated_stubs(output_root)
     summary.lint_errors = [str(finding) for finding in lint_errors]
     summary.lint_warnings = [str(finding) for finding in lint_warnings]

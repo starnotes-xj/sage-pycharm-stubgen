@@ -1,0 +1,166 @@
+import tempfile
+import types
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from sage_pycharm_stubgen.runtime_audit import (
+    RuntimeAuditSummary,
+    audit_stub_text,
+    audit_stub_tree,
+)
+
+
+def _runtime(**members) -> types.SimpleNamespace:
+    return types.SimpleNamespace(**members)
+
+
+class RuntimeAuditTests(unittest.TestCase):
+    def _audit(self, stub_text: str, namespace: dict) -> tuple[str, RuntimeAuditSummary]:
+        return audit_stub_text(stub_text, _runtime(**namespace))
+
+    def test_real_signature_is_appended_inside_the_class(self) -> None:
+        class Integer:
+            def gcd(self, right):
+                return right
+
+        stub = "class Integer:\n    def is_square(self) -> bool: ...\n"
+        content, summary = self._audit(stub, {"Integer": Integer})
+
+        self.assertIn("def gcd(self, right) -> Any: ...", content)
+        self.assertEqual(summary.methods_added, 1)
+        self.assertEqual(summary.files_touched, 0)  # tree-level counter, not per-file
+        compile(content, "sample.pyi", "exec")
+
+    def test_defaults_and_kwonly_survive(self) -> None:
+        class Element:
+            def nth_root(self, n, truncate_mode=0):
+                return n
+
+            def order(self, *, algorithm=None):
+                return 1
+
+        stub = "class Element:\n    pass\n".replace("    pass\n", "    def x(self): ...\n")
+        content, _ = self._audit(stub, {"Element": Element})
+
+        self.assertIn("def nth_root(self, n, truncate_mode=0) -> Any: ...", content)
+        self.assertIn("def order(self, *, algorithm=None) -> Any: ...", content)
+
+    def test_no_signature_falls_back_to_args_kwargs(self) -> None:
+        class Holder:
+            expand = map  # builtin without an inspectable signature
+
+        stub = "class Holder:\n    def known(self): ...\n"
+        content, summary = self._audit(stub, {"Holder": Holder})
+
+        self.assertIn("def expand(self, *args, **kwargs) -> Any: ...", content)
+        self.assertEqual(summary.fallback_signatures, 1)
+
+    def test_property_and_plain_attribute_kinds(self) -> None:
+        class Parent:
+            def __init__(self) -> None:
+                self._cat = "rings"
+
+            @property
+            def category(self):
+                return self._cat
+
+            base_ring = "ZZ"
+
+        stub = "class Parent:\n    def gen(self): ...\n"
+        content, summary = self._audit(stub, {"Parent": Parent})
+
+        self.assertIn("@property", content)
+        self.assertIn("def category(self) -> Any: ...", content)
+        self.assertIn("base_ring: Any = ...", content)
+        self.assertEqual(summary.properties_added, 1)
+        self.assertEqual(summary.attributes_added, 1)
+
+    def test_already_declared_members_are_not_duplicated(self) -> None:
+        class Integer:
+            def gcd(self, right):
+                return right
+
+        stub = "class Integer:\n    def gcd(self, right) -> Integer: ...\n"
+        content, summary = self._audit(stub, {"Integer": Integer})
+
+        self.assertEqual(content, stub)
+        self.assertEqual(summary.methods_added, 0)
+
+    def test_typing_any_import_is_inserted_once(self) -> None:
+        class Demo:
+            def value(self):
+                return 1
+
+        stub = "from sage.other import Thing\n\n\nclass Demo:\n    def known(self): ...\n"
+        content, _ = self._audit(stub, {"Demo": Demo})
+
+        self.assertEqual(content.count("from typing import Any"), 1)
+        self.assertLess(
+            content.index("from typing import Any"),
+            content.index("class Demo"),
+        )
+
+    def test_class_missing_from_runtime_is_skipped(self) -> None:
+        stub = "class Ghost:\n    def known(self): ...\n"
+        content, summary = self._audit(stub, {})
+
+        self.assertEqual(content, stub)
+        self.assertEqual(summary.classes_skipped, ["Ghost"])
+
+    def test_inline_body_class_is_skipped(self) -> None:
+        class Inline:
+            def value(self):
+                return 1
+
+        stub = "class Inline: ...\n\nclass Other:\n    def known(self): ...\n"
+        content, summary = self._audit(stub, {"Inline": Inline})
+
+        self.assertEqual(content, stub)
+        self.assertEqual(sorted(summary.classes_skipped), ["Inline", "Other"])
+
+    def test_unparseable_result_reverts_the_file(self) -> None:
+        class Demo:
+            def value(self):
+                return 1
+
+        stub = "class Demo:\n    def known(self): ...\n"
+        with mock.patch(
+            "sage_pycharm_stubgen.runtime_audit._render_member",
+            return_value=(["def broken(: ..."], "method", False),
+        ):
+            content, summary = self._audit(stub, {"Demo": Demo})
+
+        self.assertEqual(content, stub)
+        self.assertTrue(any("revert" in e for e in summary.errors))
+
+    def test_tree_audit_walks_files_and_reports_unimportable_modules(self) -> None:
+        class Demo:
+            def value(self):
+                return 1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module_dir = root / "sage" / "demo"
+            module_dir.mkdir(parents=True)
+            (module_dir / "mod.pyi").write_text(
+                "class Demo:\n    def known(self): ...\n", encoding="utf-8"
+            )
+            (module_dir / "__init__.pyi").write_text("", encoding="utf-8")
+
+            def importer(name: str):
+                if name == "sage.demo.mod":
+                    return _runtime(Demo=Demo)
+                raise ImportError(name)
+
+            summary = audit_stub_tree(root, importer=importer)
+
+            self.assertEqual(summary.files_touched, 1)
+            self.assertEqual(summary.methods_added, 1)
+            self.assertEqual(summary.modules_skipped, [])
+            rewritten = (module_dir / "mod.pyi").read_text(encoding="utf-8")
+            self.assertIn("def value(self) -> Any: ...", rewritten)
+
+
+if __name__ == "__main__":
+    unittest.main()
