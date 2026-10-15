@@ -27,6 +27,8 @@ from sage_pycharm_stubgen.installer import (
     install_stub_package,
     uninstall_stub_package,
 )
+from sage_pycharm_stubgen.lint import lint_generated_stubs
+from sage_pycharm_stubgen.merge import merge_generated_stubs
 
 
 class GeneratorTests(unittest.TestCase):
@@ -406,6 +408,83 @@ def IntegerMod(parent, value): ...
 
         self.assertIn("def Factory(number) -> _FactoryReturn_Factory: ...", stub)
         self.assertNotIn("-> str ->", stub)
+
+    def test_integer_stub_declares_truediv_overloads(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "integer.pyi"
+            stub.write_text(
+                "from sage.rings.integer import Integer\n\n\n"
+                "class Integer(EuclideanDomainElement):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            changed = enhance_integer_stub(stub)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        # ZZ(5) / QQ(2, 3) and friends divide into a Rational; anything
+        # else keeps the permissive catch-all.
+        self.assertIn(
+            "def __truediv__(self, other: Integer | int | Rational) -> Rational: ...",
+            result,
+        )
+        self.assertIn("def __truediv__(self, other: Any) -> Any: ...", result)
+        self.assertIn("from sage.rings.rational import Rational", result)
+        import ast
+
+        ast.parse(result)
+
+    def test_integer_stub_inserts_typing_import_without_anchor(self) -> None:
+        # Pre-0.9.0 the enhancer anchored the typing import on the
+        # `from sage.rings.integer import Integer` line and inserted
+        # nothing when that line was absent, leaving the overload set
+        # referencing undefined names.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "integer.pyi"
+            stub.write_text(
+                "class Integer(EuclideanDomainElement):\n    pass\n",
+                encoding="utf-8",
+            )
+            changed = enhance_integer_stub(stub)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn("from typing import Any, TypeVar, overload", result)
+        self.assertIn('T = TypeVar("T")', result)
+        import ast
+
+        ast.parse(result)
+
+    def test_merge_removes_converter_duplicates_after_integer_enhance(self) -> None:
+        # Regression for the installed 0.8.4 artifact: __mul__/__pow__ were
+        # each declared twice and the plain def shadowed the overload set,
+        # collapsing ZZ(5) * QQ(...) to Integer.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            stub = root / "sage" / "rings" / "integer.pyi"
+            stub.parent.mkdir(parents=True)
+            stub.write_text(
+                "from sage.rings.integer import Integer\n\n\n"
+                "class Integer(EuclideanDomainElement):\n"
+                "    def gcd(self, other): ...\n"
+                "    def __pow__(left, right, modulus=None): ...\n"
+                "    def __mul__(left, right): ...\n"
+                "    def sqrt(self, all=False): ...\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(enhance_integer_stub(stub))
+            merge_generated_stubs(root)
+            errors, _warnings = lint_generated_stubs(root, check_curated=False)
+            self.assertEqual(errors, [])
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertEqual(result.count("def __mul__("), 3)
+        self.assertEqual(result.count("def __pow__("), 1)
+        self.assertEqual(result.count("def __add__("), 1)
+        self.assertEqual(result.count("def __truediv__("), 2)
+        import ast
+
+        ast.parse(result)
 
     def test_installer_rejects_invalid_stub_before_touching_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

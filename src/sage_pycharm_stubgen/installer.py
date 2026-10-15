@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.metadata
 import json
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +42,7 @@ class InstallationResult:
     preserved_existing_files: int
     taken_over_files: int
     manifest: Path
+    preserved_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,32 @@ class UninstallResult:
     target_root: Path
     removed_files: int
     restored_backups: int
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    """Outcome of re-hashing an installed stub package against its manifest."""
+
+    manifest: Path
+    checked_files: int
+    missing: list[str] = field(default_factory=list)
+    modified: list[str] = field(default_factory=list)
+    unowned: list[str] = field(default_factory=list)
+
+    @property
+    def clean(self) -> bool:
+        return not (self.missing or self.modified or self.unowned)
+
+
+def _sha256_file(path: Path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
 
 
 def _read_manifest(
@@ -121,6 +149,7 @@ def install_stub_package(
     sage_version: str,
     overwrite_unowned: bool = False,
     force: bool = False,
+    generator_commit: str | None = None,
 ) -> InstallationResult:
     """Install generated stubs next to Sage's runtime modules.
 
@@ -131,11 +160,12 @@ def install_stub_package(
     path is taken over, after being backed up to ``<name>.pyi.sps-bak`` so an
     uninstall can restore it.
 
-    The manifest records the generator version.  Installing with an OLDER
-    tool version than the one that produced the current stubs is refused
-    (unless ``force`` is set): the newer tool's documentation enrichment
-    (curated Chinese docs, return annotations) would be silently lost
-    otherwise.
+    The manifest records the generator version AND the SHA-256 of every
+    installed file, so ``verify`` can answer which artifact is actually
+    installed.  Installing with an OLDER tool version than the one that
+    produced the current stubs is refused (unless ``force`` is set): the
+    newer tool's documentation enrichment (curated Chinese docs, return
+    annotations) would be silently lost otherwise.
     """
     source, generated_files = _validated_generated_files(output_root)
     target = _validated_sage_package(sage_package)
@@ -158,6 +188,7 @@ def install_stub_package(
 
     pending: list[tuple[Path, Path]] = []
     preserved_existing = 0
+    preserved_paths: list[str] = []
     taken_over = 0
     backups: dict[str, str] = {}
     for source_file in generated_files:
@@ -166,6 +197,7 @@ def install_stub_package(
         if destination.exists() and relative not in previously_owned:
             if not overwrite_unowned:
                 preserved_existing += 1
+                preserved_paths.append(relative.as_posix())
                 continue
             backup = destination.with_name(destination.name + ".sps-bak")
             shutil.copy2(destination, backup)
@@ -174,17 +206,24 @@ def install_stub_package(
         pending.append((source_file, relative))
 
     installed: set[Path] = set()
+    file_hashes: dict[str, str] = {}
     for source_file, relative in pending:
         destination = target / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_file, destination)
         installed.add(relative)
+        digest = _sha256_file(source_file)
+        if digest:
+            file_hashes[relative.as_posix()] = digest
 
     marker_relative = Path("py.typed")
     marker = target / marker_relative
     if not marker.exists() or marker_relative in previously_owned:
         marker.write_text("", encoding="utf-8")
         installed.add(marker_relative)
+    marker_digest = _sha256_file(marker)
+    if marker_digest:
+        file_hashes[marker_relative.as_posix()] = marker_digest
 
     # Ship the curated Chinese docs next to the installed stubs so the
     # documentation data survives in the environment even if the stubs are
@@ -198,6 +237,9 @@ def install_stub_package(
             curated_payload + "\n", encoding="utf-8"
         )
         installed.add(curated_relative)
+        curated_digest = _sha256_file(target / curated_relative)
+        if curated_digest:
+            file_hashes[curated_relative.as_posix()] = curated_digest
     except Exception:  # pragma: no cover - the data module is always shipped
         pass
 
@@ -211,14 +253,16 @@ def install_stub_package(
             _remove_empty_parents(stale_file, target)
 
     payload = {
-        "format": 1,
+        "format": 2,
         "generator": "sage-pycharm-stubgen",
         "generator_version": _current_version(),
+        "generator_commit": generator_commit,
         "sage_version": sage_version,
         "sage_package": str(target),
         "generated_from": str(output_root.resolve()),
         "installed_at": datetime.now(timezone.utc).isoformat(),
         "files": sorted(path.as_posix() for path in installed),
+        "file_hashes": file_hashes,
         "backups": backups,
     }
     manifest.write_text(
@@ -232,7 +276,51 @@ def install_stub_package(
         preserved_existing,
         taken_over,
         manifest,
+        tuple(preserved_paths),
     )
+
+
+def verify_stub_package(sage_package: Path) -> VerificationResult:
+    """Recompute hashes of the installed stubs against the manifest.
+
+    Reports files that disappeared, files whose content no longer matches
+    the recorded hash, and ``.pyi`` files inside the Sage package that the
+    manifest does not own (leftovers from an untracked earlier install —
+    the state that previously made 'which version is installed'
+    unanswerable).  Manifests written before format 2 carry no hashes; for
+    those only presence and ownership are checked.
+    """
+    target = _validated_sage_package(sage_package)
+    manifest = target / MANIFEST_NAME
+    if not manifest.is_file():
+        raise RuntimeError(
+            f"No installation manifest at {manifest}: this Sage package has "
+            "no sage-pycharm-stubgen installation to verify"
+        )
+    payload = _read_manifest(target)
+    hashes = payload.get("file_hashes")
+    if not isinstance(hashes, dict):
+        hashes = {}
+    owned: set[str] = set()
+    missing: list[str] = []
+    modified: list[str] = []
+    for relative in _manifest_files(target):
+        owned.add(relative.as_posix())
+        installed_file = target / relative
+        if not installed_file.is_file():
+            missing.append(relative.as_posix())
+            continue
+        expected = hashes.get(relative.as_posix())
+        if not isinstance(expected, str) or not expected:
+            continue  # legacy manifest: presence-only check
+        if _sha256_file(installed_file) != expected:
+            modified.append(relative.as_posix())
+    unowned = sorted(
+        installed.relative_to(target).as_posix()
+        for installed in target.rglob("*.pyi")
+        if installed.is_file() and installed.relative_to(target).as_posix() not in owned
+    )
+    return VerificationResult(manifest, len(owned), missing, modified, unowned)
 
 
 def uninstall_stub_package(sage_package: Path) -> UninstallResult:

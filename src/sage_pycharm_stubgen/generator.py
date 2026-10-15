@@ -16,7 +16,9 @@ from types import ModuleType
 from typing import Any, Iterable
 
 from .factory_inference import FactoryInference, factory_return_map, infer_factory_returns
-from .docstring_enrich import EnrichmentSummary, enrich_stubs, _quote
+from .docstring_enrich import EnrichmentSummary, enrich_stubs, _insert_imports, _quote
+from .lint import lint_generated_stubs
+from .merge import merge_generated_stubs
 from .supplemental_docs import SUPPLEMENTAL_DOCS
 from .py_renderer import render_py_stub
 
@@ -68,6 +70,7 @@ class GenerationSummary:
     sage_version: str
     sage_package: str
     output_root: str
+    generator_commit: str = ""
     discovered: int = 0
     generated: int = 0
     failed: int = 0
@@ -78,6 +81,9 @@ class GenerationSummary:
     dynamic_unresolved: list[str] = field(default_factory=list)
     docstrings: EnrichmentSummary | None = None
     failures: list[Failure] = field(default_factory=list)
+    merged_duplicates: int = 0
+    lint_errors: list[str] = field(default_factory=list)
+    lint_warnings: list[str] = field(default_factory=list)
 
     def write(self, path: Path) -> None:
         payload = asdict(self)
@@ -86,6 +92,31 @@ class GenerationSummary:
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+
+
+def _generator_git_commit() -> str:
+    """Best-effort git commit of the running source tree (empty when absent).
+
+    Version numbers alone could not answer which generator actually produced
+    an artifact (0.8.4 source, 0.8.3 dist-info, different logic).  The commit
+    recorded in the generation report and install manifest closes that gap;
+    a pip-installed tool has no checkout and reports the empty string.
+    """
+    import subprocess
+
+    source_root = Path(__file__).resolve().parents[2]
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=source_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def detect_sage_package() -> tuple[Path, str]:
@@ -248,6 +279,10 @@ _INTEGER_ARITHMETIC_DUNDERS = """\
     def __mul__(self, other: int) -> Integer: ...
     @overload
     def __mul__(self, other: T) -> T: ...
+    @overload
+    def __truediv__(self, other: Integer | int | Rational) -> Rational: ...
+    @overload
+    def __truediv__(self, other: Any) -> Any: ...
     def __mod__(self, other: Any) -> Integer: ...
     def __floordiv__(self, other: Any) -> Integer: ...
     def __pow__(self, exp: Any, mod: Any = None) -> Any: ...
@@ -269,6 +304,14 @@ def enhance_integer_stub(path: Path) -> bool:
     into ``Integer``) stay ``Integer``, while any other operand type comes
     back as itself -- so ``n_b * Q_a`` (scalar times an elliptic-curve
     point) keeps the point type instead of collapsing to ``Integer``.
+
+    ``__truediv__`` mirrors the same coercion truth: an Integer divided by
+    an Integer/int/Rational is a Rational (``ZZ(5) / QQ(2, 3)``), anything
+    else stays permissive.
+
+    The merge pass (:mod:`sage_pycharm_stubgen.merge`) that runs after all
+    enhancers removes any same-named declaration the converter emitted, so
+    each member exists exactly once in the final stub.
     """
     if not path.is_file():
         return False
@@ -281,7 +324,8 @@ def enhance_integer_stub(path: Path) -> bool:
         flags=re.MULTILINE,
     )
     # Drop the converter's untyped `def __mul__(left, right)` so the member
-    # is declared exactly once (the overload set above supersedes it).
+    # is declared exactly once (the overload set above supersedes it).  Any
+    # surviving same-named declaration is removed by the merge pass.
     content = re.sub(
         r"^    def __mul__\(left, right\):[^\n]*\n(?:        [^\n]*\n|\n)*?(?=^    def )",
         "",
@@ -289,15 +333,25 @@ def enhance_integer_stub(path: Path) -> bool:
         count=1,
         flags=re.MULTILINE,
     )
-    if "T = TypeVar" not in content:
-        content = re.sub(
-            r"^(from sage\.rings\.integer import Integer)$",
-            lambda match: match.group(1)
-            + "\nfrom typing import Any, TypeVar, overload\n\nT = TypeVar(\"T\")",
-            content,
-            count=1,
-            flags=re.MULTILINE,
-        )
+    header_lines: list[str] = []
+    if "from sage.rings.rational import Rational" not in content:
+        header_lines.append("from sage.rings.rational import Rational")
+    if not re.search(r"^from typing import .*\boverload\b", content, flags=re.MULTILINE):
+        header_lines.append("from typing import Any, TypeVar, overload")
+    if "T = TypeVar(" not in content:
+        header_lines.append('T = TypeVar("T")')
+    if header_lines:
+        try:
+            tree = ast.parse(content)
+        except SyntaxError:
+            tree = None
+        if tree is not None:
+            # Insert after the last top-level import (or after the module
+            # docstring when there are none); anchoring on a specific import
+            # line silently skipped insertion when that line was absent.
+            lines = content.splitlines()
+            _insert_imports(lines, tree, header_lines)
+            content = "\n".join(lines) + "\n"
     if content == original:
         return False
     path.write_text(content, encoding="utf-8")
@@ -848,6 +902,7 @@ def generate(
         sage_version=sage_version,
         sage_package=str(package),
         output_root=str(output_root),
+        generator_commit=_generator_git_commit(),
         discovered=len(sources),
     )
     def make_converter(*, include_docstrings: bool, pxd_to_stubs: bool) -> Any:
@@ -994,6 +1049,20 @@ def generate(
         summary.enhanced.append(
             "class-body method aliases promoted to def declarations"
         )
+
+    # Final reconciliation: every writer above has now run, so each member
+    # must be declared exactly once and the result must pass the product
+    # lint before it can be installed.
+    merge_result = merge_generated_stubs(output_root)
+    summary.merged_duplicates = merge_result.removed_declarations
+    if merge_result.removed_declarations:
+        summary.enhanced.append(
+            f"merged {merge_result.removed_declarations} duplicate declaration(s) "
+            f"across {merge_result.changed_files} stub(s)"
+        )
+    lint_errors, lint_warnings = lint_generated_stubs(output_root)
+    summary.lint_errors = [str(finding) for finding in lint_errors]
+    summary.lint_warnings = [str(finding) for finding in lint_warnings]
 
     summary.write(output_root / "generation-report.json")
     return summary

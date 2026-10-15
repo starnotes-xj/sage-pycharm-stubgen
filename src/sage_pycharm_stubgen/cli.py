@@ -190,6 +190,19 @@ def build_parser() -> argparse.ArgumentParser:
             "declarations hiding concrete subclasses)"
         ),
     )
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help=(
+            "Recompute SHA-256 hashes of the installed stub files against the "
+            "installation manifest and report missing, modified or unowned "
+            ".pyi files — answers 'which artifact is actually installed'"
+        ),
+    )
+    verify_parser.add_argument(
+        "--source",
+        type=Path,
+        help="Installed Sage package root (default: auto-detected)",
+    )
     translate_parser = subparsers.add_parser(
         "translate-docs",
         help=(
@@ -357,6 +370,32 @@ def run_conformance_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_verify_cmd(args: argparse.Namespace) -> int:
+    from .installer import verify_stub_package
+
+    if args.source is not None:
+        target = args.source
+    else:
+        target, _ = detect_sage_package()
+    try:
+        result = verify_stub_package(target)
+    except RuntimeError as exc:
+        print(f"Cannot verify: {exc}", file=sys.stderr)
+        return 2
+    print(f"Manifest: {result.manifest}")
+    print(f"Manifest files: {result.checked_files}")
+    for name in result.missing:
+        print(f"MISSING {name}")
+    for name in result.modified:
+        print(f"MODIFIED {name}")
+    for name in result.unowned:
+        print(f"UNOWNED {name}")
+    if result.clean:
+        print("OK: installed stubs match the manifest hashes")
+        return 0
+    return 2
+
+
 def run_translate_docs(args: argparse.Namespace) -> int:
     from .translate import (
         TranslationCache,
@@ -435,6 +474,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_preparse(args)
     if args.command == "conformance":
         return run_conformance_cmd(args)
+    if args.command == "verify":
+        return run_verify_cmd(args)
     if args.command == "translate-docs":
         return run_translate_docs(args)
     if args.install and args.uninstall:
@@ -466,6 +507,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Failed: {summary.failed}")
     print(f"Output: {summary.output_root}")
     print(f"Report: {Path(summary.output_root) / 'generation-report.json'}")
+    print(
+        f"Lint: {len(summary.lint_errors)} error(s), "
+        f"{len(summary.lint_warnings)} warning(s)"
+    )
     if args.strict_factories and summary.factory_unresolved:
         print(
             "Strict factory audit failed: "
@@ -474,7 +519,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     if (args.strict or args.install) and (
-        summary.failed or summary.factory_unresolved or summary.dynamic_unresolved
+        summary.failed
+        or summary.factory_unresolved
+        or summary.dynamic_unresolved
+        or summary.lint_errors
     ):
         details: list[str] = []
         if summary.failed:
@@ -483,7 +531,16 @@ def main(argv: list[str] | None = None) -> int:
             details.append("factories=" + ", ".join(summary.factory_unresolved))
         if summary.dynamic_unresolved:
             details.append("sage.all Any=" + ", ".join(summary.dynamic_unresolved))
+        if summary.lint_errors:
+            details.append(f"lint errors={len(summary.lint_errors)}")
         print("Strict audit failed: " + "; ".join(details), file=sys.stderr)
+        for line in summary.lint_errors[:10]:
+            print(f"  lint: {line}", file=sys.stderr)
+        if len(summary.lint_errors) > 10:
+            print(
+                f"  ... and {len(summary.lint_errors) - 10} more lint errors",
+                file=sys.stderr,
+            )
         return 2
     if args.install:
         if summary.failed:
@@ -499,6 +556,7 @@ def main(argv: list[str] | None = None) -> int:
                 summary.sage_version,
                 overwrite_unowned=args.overwrite_unowned,
                 force=args.force,
+                generator_commit=summary.generator_commit or None,
             )
         except RuntimeError as exc:
             print(f"Refusing to install: {exc}", file=sys.stderr)
@@ -506,6 +564,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Installed: {result.installed_files}")
         if hasattr(result, "preserved_existing_files"):
             print(f"Preserved existing stubs: {result.preserved_existing_files}")
+            for name in result.preserved_paths[:10]:
+                print(f"  preserved (unowned): {name}")
+            if len(result.preserved_paths) > 10:
+                print(
+                    f"  ... and {len(result.preserved_paths) - 10} more "
+                    "(use --overwrite-unowned to take them over)"
+                )
         if hasattr(result, "taken_over_files"):
             print(f"Taken over pre-existing stubs: {result.taken_over_files}")
         print(f"Stub target: {result.target_root}")

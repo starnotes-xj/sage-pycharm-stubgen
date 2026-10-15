@@ -330,7 +330,43 @@ For every curated return fix it reports whether the installed Sage source
 declares the same type (`ok`), disagrees (`conflict` — either the data
 layer is stale or the upstream annotation is wrong, both actionable), or
 declares nothing (`unannotated` — the patch is still needed).  `--json`
-emits one object per finding for automation.
+emits one object per finding for automation.  `--runtime` additionally
+executes each entry's doctest examples against the live Sage runtime and
+reports declared types that do not fit the observed result.
+
+## Duplicate-declaration merge and product lint
+
+Several independent writers decorate a generated stub (the converter,
+curated `declare` entries, the arithmetic enhancers, the alias
+promoter).  Since 0.9.0 the pipeline ends with two safety passes over the
+final artifact, so one writer can no longer silently fight another:
+
+- **Merge** (`sage_pycharm_stubgen.merge`) — every name in every class is
+  declared exactly once.  An `@overload` group wins over any plain `def`
+  or assignment with the same name; among plain defs the best-annotated
+  one wins; a `def` wins over a same-named assignment.  This is the fix
+  for the 0.8.x artifacts where `Integer.__mul__`/`__pow__` were declared
+  twice and the trailing plain `def` shadowed the overload set, typing
+  `ZZ(5) * QQ(...)` as `Integer`.
+- **Lint** (`sage_pycharm_stubgen.lint`) — reports structural errors on
+  the final tree: `overload-shadow`, `duplicate-member`,
+  `member-shadowed-by-assignment`, and warnings for annotations that
+  reference names the stub neither imports nor declares, plus curated
+  entries that did not land.  `--strict` and `--install` refuse to ship
+  a tree with lint errors; every finding is listed in
+  `generation-report.json`.
+
+## Verifying what is actually installed
+
+```bash
+sage-pycharm-stubgen verify
+```
+
+Recomputes the SHA-256 of every installed stub file against the
+installation manifest and reports `MISSING`, `MODIFIED` and `UNOWNED`
+`.pyi` files.  The manifest (format 2) records per-file hashes plus the
+generator's git commit, so "the version says 0.8.4 but the logic
+differs" becomes a checkable claim instead of archaeology.
 
 ## Advanced generation
 

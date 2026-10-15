@@ -1296,6 +1296,11 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "return": 'list[Rational]',
             "imports": ['from sage.rings.rational import Rational'],
         },
+        "ContinuedFraction_base.convergents": {
+            "doc": "返回该连分数对象的全部渐近分数（收敛子）列表：c_0 = a_0, c_1 = a_0 + 1/a_1, ... 按阶数 k 升序。Wiener 攻击枚举 d/e 时用它取逼近序列。\n\n返回:\nlist[Rational] -- 渐近分数列表（最后一项等于连分数本身，x 为有理数时）；无限连分数返回惰性列表对象，用 list(...) 显式转换\n\n示例::\n\n    sage: continued_fraction(143/255).convergents()\n    [0, 1, 1/2, 4/7, 5/9, 9/16, 14/25, 23/41, 60/107, 143/255]",
+            "return": 'list[Rational]',
+            "imports": ['from sage.rings.rational import Rational'],
+        },
     },
     "sage.rings.fast_arith": {
         "prime_range": {

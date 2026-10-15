@@ -83,6 +83,52 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(_version_tuple("0.7.0"), _version_tuple("0.7.0"))
         self.assertLess(_version_tuple("0.7.0"), _version_tuple("99.0.0"))
 
+    def test_manifest_records_hashes_and_verify_passes(self) -> None:
+        from sage_pycharm_stubgen.installer import verify_stub_package
+
+        tmp, output_root, sage_package = _make_fixtures()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        install_stub_package(output_root, sage_package, "10.9")
+
+        manifest = json.loads(
+            (sage_package / MANIFEST_NAME).read_text(encoding="utf-8")
+        )
+        self.assertIn("rings/sample.pyi", manifest["file_hashes"])
+        self.assertEqual(len(manifest["file_hashes"]["rings/sample.pyi"]), 64)
+
+        result = verify_stub_package(sage_package)
+        self.assertTrue(result.clean)
+        self.assertGreaterEqual(result.checked_files, 1)
+
+    def test_verify_detects_modified_missing_and_unowned(self) -> None:
+        from sage_pycharm_stubgen.installer import verify_stub_package
+
+        tmp, output_root, sage_package = _make_fixtures()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        install_stub_package(output_root, sage_package, "10.9")
+
+        sample = sage_package / "rings" / "sample.pyi"
+        sample.write_text("class Sample: ...\n# tampered\n", encoding="utf-8")
+        (sage_package / "foreign.pyi").write_text(
+            "class Foreign: ...\n", encoding="utf-8"
+        )
+        result = verify_stub_package(sage_package)
+        self.assertIn("rings/sample.pyi", result.modified)
+        self.assertIn("foreign.pyi", result.unowned)
+        self.assertFalse(result.clean)
+
+        sample.unlink()
+        result = verify_stub_package(sage_package)
+        self.assertIn("rings/sample.pyi", result.missing)
+
+    def test_verify_requires_manifest(self) -> None:
+        from sage_pycharm_stubgen.installer import verify_stub_package
+
+        tmp, output_root, sage_package = _make_fixtures()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        with self.assertRaises(RuntimeError):
+            verify_stub_package(sage_package)
+
     def test_package_version_matches_pyproject(self) -> None:
         import tomllib
 
