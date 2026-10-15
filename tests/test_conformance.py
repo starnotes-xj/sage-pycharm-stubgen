@@ -5,6 +5,7 @@ from pathlib import Path
 from sage_pycharm_stubgen.conformance import (
     check_actual_type,
     doctest_lines,
+    export_upstream_patches,
     find_source_file,
     normalize_annotation,
     run_conformance,
@@ -226,6 +227,99 @@ class RuntimeCheckTests(unittest.TestCase):
         self.assertEqual(
             by_qualname["EllipticCurve_generic.no_example"].status, "skipped"
         )
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class UpstreamExportTests(unittest.TestCase):
+    def _make_package(self, tmp: str) -> Path:
+        root = Path(tmp)
+        source = root / "sage" / "demo" / "mod.py"
+        source.parent.mkdir(parents=True)
+        source.write_text(
+            '"""Demo."""\n'
+            "from sage.rings.integer import Integer\n"
+            "\n"
+            "\n"
+            "def divisors(n):\n"
+            "    return [Integer(1), Integer(n)]\n"
+            "\n"
+            "\n"
+            "class Helper:\n"
+            "    def sqrt(self):\n"
+            "        return Integer(2)\n",
+            encoding="utf-8",
+        )
+        compiled = root / "sage" / "demo" / "fast.pyx"
+        compiled.write_text(
+            "def hidden(n):\n    return n\n", encoding="utf-8"
+        )
+        return root
+
+    def test_export_annotates_unannotated_and_skips_known(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_package(tmp)
+            out = Path(tmp) / "patches"
+            curated = {
+                "sage.demo.mod": {
+                    "divisors": {
+                        "return": "list[Integer]",
+                        "imports": ["from sage.rings.integer import Integer"],
+                    },
+                    "Helper.sqrt": {"return": "Integer"},
+                    # already declared upstream-equivalent -> skipped
+                    "declared": {"return": "Integer"},
+                },
+                "sage.demo.fast": {"hidden": {"return": "Integer"}},
+                "sage.demo.missing": {"gone": {"return": "Integer"}},
+            }
+            # add an already-annotated def for the "declared" entry
+            source = root / "sage" / "demo" / "mod.py"
+            source.write_text(
+                source.read_text(encoding="utf-8")
+                + "\n\ndef declared(n) -> Integer:\n    return n\n",
+                encoding="utf-8",
+            )
+            result = export_upstream_patches(root, out, curated)
+
+            self.assertEqual(result.annotated, 2)
+            self.assertEqual(len(result.patches), 1)
+            patch = Path(result.patches[0]).read_text(encoding="utf-8")
+            self.assertIn("-> list[Integer]", patch)
+            self.assertIn("-> Integer", patch)
+            # Integer is already imported in the module; no import TODO added
+            self.assertNotIn("TODO(upstream)", patch)
+            self.assertIn("sage.demo.fast.hidden", result.skipped_compiled)
+            self.assertIn("sage.demo.mod.declared", result.skipped_annotated)
+            self.assertIn("sage.demo.missing.gone", result.skipped_not_found)
+            # The exporter itself refuses to write a patch whose patched
+            # source does not parse (fail-closed), so reaching here with a
+            # patch already proves syntactic validity.
+            self.assertTrue(patch.startswith("---"))
+            self.assertTrue(patch.splitlines()[1].startswith("+++"))
+
+    def test_export_adds_todo_import_for_missing_annotation_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._make_package(tmp)
+            out = Path(tmp) / "patches"
+            curated = {
+                "sage.demo.mod": {
+                    "divisors": {
+                        "return": "list[Rational]",
+                        "imports": ["from sage.rings.rational import Rational"],
+                    },
+                },
+            }
+            result = export_upstream_patches(root, out, curated)
+            self.assertEqual(result.annotated, 1)
+            self.assertEqual(result.imports_added, 1)
+            patch = Path(result.patches[0]).read_text(encoding="utf-8")
+            self.assertIn(
+                "from sage.rings.rational import Rational  # TODO(upstream)",
+                patch,
+            )
 
 
 if __name__ == "__main__":

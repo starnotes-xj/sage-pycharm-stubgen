@@ -190,6 +190,17 @@ def build_parser() -> argparse.ArgumentParser:
             "declarations hiding concrete subclasses)"
         ),
     )
+    conformance_parser.add_argument(
+        "--export-upstream",
+        type=Path,
+        metavar="DIR",
+        help=(
+            "Write upstream-ready unified-diff patches into DIR: every "
+            "curated return whose Sage source is still unannotated becomes a "
+            "-> annotation patch (plus TODO imports) suitable for a SageMath "
+            "upstream PR. Never apply these to the installed tree"
+        ),
+    )
     verify_parser = subparsers.add_parser(
         "verify",
         help=(
@@ -333,6 +344,22 @@ def run_conformance_cmd(args: argparse.Namespace) -> int:
     runtime_counts = {"ok": 0, "mismatch": 0, "skipped": 0}
     for finding in runtime_findings:
         runtime_counts[finding.status] += 1
+
+    if args.export_upstream is not None:
+        from .conformance import export_upstream_patches
+
+        export = export_upstream_patches(source_root, args.export_upstream)
+        print(f"Upstream patches written: {len(export.patches)}")
+        print(f"Annotations added: {export.annotated} (imports added: {export.imports_added})")
+        for name in export.skipped_compiled[:5]:
+            print(f"  skipped (.pyx needs recompile): {name}")
+        if len(export.skipped_compiled) > 5:
+            print(f"  ... and {len(export.skipped_compiled) - 5} more compiled-module entries")
+        for name in export.skipped_annotated[:5]:
+            print(f"  skipped (already annotated upstream): {name}")
+        for name in export.skipped_conflict:
+            print(f"  CONFLICT (needs human decision): {name}")
+        return 0
 
     if args.json:
         import json as _json

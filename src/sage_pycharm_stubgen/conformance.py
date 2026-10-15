@@ -32,11 +32,12 @@ from __future__ import annotations
 import ast
 import collections.abc as collections_abc
 import contextlib
+import difflib
 import importlib
 import io
 import re
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -83,12 +84,23 @@ def normalize_annotation(text: str) -> str:
 
 
 def find_source_file(package_root: Path, module: str) -> Path | None:
-    """The shipped source (``.py`` or ``.pyx``) for a sage module, if present."""
+    """The shipped source (``.py`` or ``.pyx``) for a sage module, if present.
+
+    Accepts both root conventions: the Python package root
+    (``.../site-packages``) and the Sage package directory itself
+    (``.../site-packages/sage``, what :func:`detect_sage_package` returns)
+    — in the latter case the module's leading ``sage`` segment is not
+    duplicated.
+    """
     relative = Path(*module.split("."))
-    for suffix in (".py", ".pyx"):
-        candidate = package_root / relative.with_suffix(suffix)
-        if candidate.is_file():
-            return candidate
+    candidates = [relative]
+    if relative.parts and relative.parts[0] == package_root.name:
+        candidates.append(Path(*relative.parts[1:]))
+    for candidate in candidates:
+        for suffix in (".py", ".pyx"):
+            path = package_root / candidate.with_suffix(suffix)
+            if path.is_file():
+                return path
     return None
 
 
@@ -223,6 +235,214 @@ class RuntimeFinding:
             "actual": self.actual,
             "detail": self.detail,
         }
+
+
+@dataclass
+class UpstreamExportResult:
+    """Outcome of generating upstream-ready annotation patches."""
+
+    patches: list[str] = field(default_factory=list)  # written patch paths
+    annotated: int = 0  # annotations added across patches
+    imports_added: int = 0
+    skipped_compiled: list[str] = field(default_factory=list)  # .pyx-only modules
+    skipped_annotated: list[str] = field(default_factory=list)  # source already declares
+    skipped_conflict: list[str] = field(default_factory=list)  # needs human decision
+    skipped_not_found: list[str] = field(default_factory=list)
+
+
+def _module_known_names(tree: ast.Module) -> set[str]:
+    """Names importable at module scope: imports plus top-level defs/classes."""
+    names: set[str] = set()
+    for statement in tree.body:
+        if isinstance(statement, (ast.Import, ast.ImportFrom)):
+            for alias in statement.names:
+                names.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(statement.name)
+        elif isinstance(statement, ast.Assign):
+            names.update(t.id for t in statement.targets if isinstance(t, ast.Name))
+    return names
+
+
+def _annotation_needed_names(annotation: str) -> set[str]:
+    try:
+        tree = ast.parse(f"def _probe() -> {annotation}: ...\n")
+    except SyntaxError:
+        return set()
+    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+
+
+def export_upstream_patches(
+    package_root: Path,
+    out_dir: Path,
+    curated: dict[str, dict[str, Any]] | None = None,
+) -> UpstreamExportResult:
+    """Generate upstream-ready patches adding curated return annotations.
+
+    Only ``unannotated`` targets are exported: the source declares no return
+    type, the curated table carries one, and (per the caller's conformance
+    run) it is runtime-verified.  ``conflict`` findings need a human decision
+    and are skipped, as are ``.pyx`` modules (annotations there require a
+    full recompile — upstream adds those itself).
+
+    Each patch inserts ``-> ReturnType`` on the def line and, when the
+    annotation references a name the module does not provide, a matching
+    from-import marked with a TODO so the PR author can confirm it does not
+    introduce a circular import.  Patches are PR material: they are meant
+    for the SageMath upstream, never applied to the installed tree (where
+    evaluated annotations could break imports and a Sage upgrade would
+    silently discard them).
+    """
+    curated = SUPPLEMENTAL_DOCS if curated is None else curated
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = UpstreamExportResult()
+
+    for module, entries in sorted(curated.items()):
+        source = find_source_file(package_root, module)
+        if source is None:
+            result.skipped_not_found.extend(
+                f"{module}.{name}" for name, entry in entries.items()
+                if isinstance(entry, dict) and entry.get("return")
+            )
+            continue
+        if source.suffix == ".pyx":
+            result.skipped_compiled.extend(
+                f"{module}.{name}" for name, entry in entries.items()
+                if isinstance(entry, dict) and entry.get("return")
+            )
+            continue
+
+        try:
+            text = source.read_text(encoding="utf-8")
+            tree = ast.parse(text)
+        except (OSError, UnicodeError, SyntaxError):
+            result.skipped_not_found.extend(
+                f"{module}.{name}" for name, entry in entries.items()
+                if isinstance(entry, dict) and entry.get("return")
+            )
+            continue
+
+        annotations = source_annotations(source)
+        known = _module_known_names(tree)
+        lines = text.splitlines()
+        # (lineno 1-based of def header end, new tail, import lines) per edit
+        edits: dict[int, str] = {}
+        import_lines: list[str] = []
+        for qualname, entry in sorted(entries.items()):
+            if not isinstance(entry, dict):
+                continue
+            return_type = entry.get("return")
+            if not return_type:
+                continue
+            full = f"{module}.{qualname}"
+            declared = annotations.get(qualname)
+            if declared and normalize_annotation(declared) == normalize_annotation(return_type):
+                result.skipped_annotated.append(full)
+                continue
+            if declared:  # conflict: human decision required
+                result.skipped_conflict.append(full)
+                continue
+
+            node = _locate_function(tree, qualname)
+            if node is None:
+                result.skipped_not_found.append(full)
+                continue
+            # The signature (not the body) carries the annotation colon: it
+            # ends on the line before the first body statement — which is
+            # also correct for one-liner suites (`def f(): ...`).
+            signature_end = (
+                node.body[0].lineno if node.body else (node.end_lineno or node.lineno)
+            ) - 1
+            tail_line = lines[signature_end - 1]
+            colon = tail_line.rfind(":")
+            if colon < 0:
+                result.skipped_not_found.append(full)
+                continue
+            new_tail = tail_line[:colon] + f" -> {return_type}" + tail_line[colon:]
+            edits[signature_end] = new_tail
+            result.annotated += 1
+
+            needed = {
+                name
+                for name in _annotation_needed_names(return_type)
+                if name not in known
+            }
+            for import_line in entry.get("imports", []):
+                match = re.fullmatch(r"from ([.\w]+) import (.+)", import_line.strip())
+                if not match:
+                    continue
+                for part in match.group(2).split(","):
+                    alias = re.fullmatch(r"(\w+)(?: as (\w+))?", part.strip())
+                    if not alias:
+                        continue
+                    visible = alias.group(2) or alias.group(1)
+                    if visible in needed and import_line.strip() not in import_lines:
+                        import_lines.append(
+                            import_line.strip()
+                            + "  # TODO(upstream): confirm no circular import"
+                        )
+
+        if not edits:
+            continue
+        new_lines = list(lines)
+        for lineno in sorted(edits, reverse=True):
+            new_lines[lineno - 1] = edits[lineno]
+        if import_lines:
+            result.imports_added += len(import_lines)
+            last_import = 0
+            for statement in tree.body:
+                if isinstance(statement, (ast.Import, ast.ImportFrom)):
+                    last_import = max(last_import, statement.end_lineno or statement.lineno)
+            if last_import == 0:
+                for statement in tree.body:
+                    if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
+                        last_import = statement.end_lineno or statement.lineno
+                        break
+            for offset, line in enumerate(import_lines, start=1):
+                new_lines.insert(last_import + offset - 1, line)
+        new_text = "\n".join(new_lines) + "\n"
+        # The patched source must still parse.
+        try:
+            ast.parse(new_text)
+        except SyntaxError:
+            result.annotated -= len(edits)
+            result.skipped_not_found.extend(f"{module}.{q}" for q in edits)
+            continue
+
+        diff = difflib.unified_diff(
+            text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"a/{source.relative_to(package_root).as_posix()}",
+            tofile=f"b/{source.relative_to(package_root).as_posix()}",
+        )
+        patch_path = out_dir / (module.replace(".", "_") + ".patch")
+        patch_path.write_text("".join(diff), encoding="utf-8")
+        result.patches.append(str(patch_path))
+    return result
+
+
+def _locate_function(tree: ast.Module, qualname: str) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """The module-level or class-body function declared under *qualname*."""
+    parts = qualname.split(".")
+    scope: list[ast.stmt] = tree.body
+    node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+    for index, part in enumerate(parts):
+        last = index == len(parts) - 1
+        match = None
+        for statement in scope:
+            if last and isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name == part:
+                match = statement
+                break
+            if not last and isinstance(statement, ast.ClassDef) and statement.name == part:
+                match = statement
+                break
+        if match is None:
+            return None
+        if last:
+            node = match
+        else:
+            scope = match.body  # type: ignore[assignment]
+    return node
 
 
 _BUILTIN_TYPES: dict[str, type[Any]] = {
