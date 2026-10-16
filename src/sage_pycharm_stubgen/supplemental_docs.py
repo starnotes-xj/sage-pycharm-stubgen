@@ -24,8 +24,8 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "imports": ['from sage.rings.integer import Integer'],
         },
         "divisors": {
-            "doc": '返回整数 n 的全部正约数，按升序排列（负数取绝对值后的正约数）。\n\n参数:\n- ``n`` -- 非零整数（唯一分解环元素亦可，如数域理想）\n\n返回:\nlist[Integer] -- n 的所有正约数，升序排列；n = 0 抛 ValueError\n\n示例::\n\n    sage: divisors(28)\n    [1, 2, 4, 7, 14, 28]',
-            "return": 'list[Integer]',
+            "doc": '返回整数 n 的全部正约数，按升序排列（负数取绝对值后的正约数）。\n\n参数:\n- ``n`` -- 非零整数（唯一分解环元素亦可，如数域理想）\n\n返回:\nlist -- n 的所有正约数（整数输入时元素为 Integer），升序排列；n = 0 抛 ValueError\n\n示例::\n\n    sage: divisors(28)\n    [1, 2, 4, 7, 14, 28]',
+            "return": "list",
             "imports": ['from sage.rings.integer import Integer'],
         },
         "factor": {
@@ -131,7 +131,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         },
         "discrete_log_lambda": {
             "doc": "Pollard lambda（袋鼠跳跃）算法求离散对数：只使用对数级内存，适合已知对数大致范围的问题（如椭圆曲线上的有界 DLOG）。\n\n参数:\n- ``a`` -- 目标群元素\n- ``base`` -- 底的群元素\n- ``bounds`` -- 二元组 (下界, 上界)，对数 n 的取值区间（必填，无默认值；需满足 0 <= 下界 <= 上界）\n- ``operation`` -- 字符串：'*'（默认）、'+' 或 'other'\n- ``identity``, ``inverse``, ``op`` -- 单位元、逆元函数、群运算（同 discrete_log）\n- ``hash_function`` -- 哈希函数\n\n返回:\nInteger -- 满足 a == base^n 且位于 bounds 区间内的整数 n；区间内不存在时抛 ValueError。时间 O(sqrt(ub-lb))，空间 O(log(ub-lb))。\n\n示例::\n\n    sage: F.<a> = GF(2^63)\n    sage: discrete_log_lambda(a^1234567, a, (1200000, 1250000))\n    1234567",
-            "return": 'Integer',
+            "return": "Integer | int",
             "imports": ['from sage.rings.integer import Integer'],
         },
         "discrete_log_rho": {
@@ -2643,8 +2643,8 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "doc": '返回换基环后的多项式环：变量名不变、基环换成 R（稀疏性保持不变）。\n\n参数:\n- ``R`` -- 新的基环（ring）\n\n返回:\n多项式环 -- 与 self 同变量名、基环为 R 的多项式环\n\n示例::\n\n    sage: R.<x> = ZZ[]\n    sage: R.change_ring(GF(7))\n    Univariate Polynomial Ring in x over Finite Field of size 7',
         },
         "PolynomialRing_generic.gens_dict": {
-            "doc": "返回 {变量名: 生成元} 的字典，键是变量名字符串，值是对应的生成元元素。\n\n返回:\n字典 -- 变量名到生成元的映射 dict[str, Polynomial]\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: R.gens_dict()\n    {'x': x}",
-            "return": 'dict[str, Any]',
+            "doc": "返回 {变量名: 生成元} 的字典，键是变量名字符串，值是对应的生成元元素。\n\n返回:\n字典 -- 变量名到生成元的映射 dict（键 str）\n\n示例::\n\n    sage: R.<x> = QQ[]\n    sage: R.gens_dict()\n    {'x': x}",
+            "return": "dict",
         },
         "PolynomialRing_generic.is_exact": {
             "doc": "判断多项式环的基环是否精确（exact），即系数运算是否无舍入误差（ZZ、QQ、GF(p) 精确；RR、CC 不精确）。\n\n返回:\nbool -- 基环精确返回 True，否则 False\n\n示例::\n\n    sage: ZZ['x'].is_exact()\n    True\n    sage: RR['x'].is_exact()\n    False",
@@ -2931,8 +2931,8 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "imports": ['from sage.rings.integer import Integer'],
         },
         "EllipticCurve_finite_field.gens": {
-            "doc": '返回生成该椭圆曲线有理点群的一组生成元。算法随机化，各次运行返回的点可能不同（同一运行内不变；若先调用了 abelian_group() 则返回其缓存基）。\n\n参数:\n（无参数）\n\n返回:\ntuple[Any, ...] -- 点的元组：群平凡时为空元组 ()；群为循环群时含 1 个点（生成元）；群非循环时含 2 个点（第一个点的阶等于群的指数）。注意：两个生成元时未必构成直积基（第二个点的阶未必最小），需要严格基请用 abelian_group()。返回的点的个数即群的最小生成元个数\n\n示例::\n\n    sage: E = EllipticCurve(GF(11), [2, 5])\n    sage: P = E.gens()[0]\n    sage: E.cardinality(), P.order()\n    (10, 10)\n\n    sage: EllipticCurve(GF(2), [0, 0, 1, 1, 1]).gens()\n    ()',
-            "return": 'tuple[Any, ...]',
+            "doc": '返回生成该椭圆曲线有理点群的一组生成元。算法随机化，各次运行返回的点可能不同（同一运行内不变；若先调用了 abelian_group() 则返回其缓存基）。\n\n参数:\n（无参数）\n\n返回:\ntuple -- 点的元组：群平凡时为空元组 ()；群为循环群时含 1 个点（生成元）；群非循环时含 2 个点（第一个点的阶等于群的指数）。注意：两个生成元时未必构成直积基（第二个点的阶未必最小），需要严格基请用 abelian_group()。返回的点的个数即群的最小生成元个数\n\n示例::\n\n    sage: E = EllipticCurve(GF(11), [2, 5])\n    sage: P = E.gens()[0]\n    sage: E.cardinality(), P.order()\n    (10, 10)\n\n    sage: EllipticCurve(GF(2), [0, 0, 1, 1, 1]).gens()\n    ()',
+            "return": "tuple",
         },
         "EllipticCurve_finite_field.is_supersingular": {
             "doc": '判断该椭圆曲线是否为超奇异（supersingular）曲线。CTF 中用于 MOV 攻击前的预检测：超奇异曲线上的嵌入度 k 很小（如 k=2），可把 ECDLP 归约到有限域乘法群上的 DLP。\n\n参数:\n- ``proof`` -- 布尔（默认 True）；True 时返回证明过的结果，False 时返回 False 是确定的、返回 True 可能基于概率测试\n\n返回:\nbool -- True 表示曲线超奇异，False 表示不是。判定依据是 j 不变量：GF(101) 上 j=0 的曲线是超奇异的，j=1728 的曲线不是\n\n示例::\n\n    sage: F = GF(101)\n    sage: EllipticCurve(j=F(0)).is_supersingular()\n    True\n    sage: EllipticCurve(j=F(1728)).is_supersingular()\n    False\n    sage: EllipticCurve(j=F(66)).is_supersingular()\n    True',
@@ -2997,8 +2997,8 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
             "imports": ['from typing import Any'],
         },
         "EllipticCurvePoint_field.order": {
-            "doc": '返回该点的阶：最小的正整数 n 使 n*self = O（无穷远点）。CTF 中判断基点阶是否为大素数（曲线合法）或等于曲线阶（异常曲线，可 SMART 攻击）。\n\n参数:\n- ``algorithm`` -- （可选）算法选择，一般留空\n\n返回:\nInteger -- 点的阶；无穷远点的阶为 1\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P.order()\n    4',
-            "return": 'Integer',
+            "doc": '返回该点的阶：最小的正整数 n 使 n*self = O（无穷远点）。CTF 中判断基点阶是否为大素数（曲线合法）或等于曲线阶（异常曲线，可 SMART 攻击）。\n\n参数:\n- ``algorithm`` -- （可选）算法选择，一般留空\n\n返回:\nInteger | PlusInfinity -- 点的阶；无穷远点的阶为 1\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P.order()\n    4',
+            "return": "Integer | PlusInfinity",
             "imports": ['from sage.rings.integer import Integer'],
         },
         "EllipticCurvePoint._acted_upon_": {
