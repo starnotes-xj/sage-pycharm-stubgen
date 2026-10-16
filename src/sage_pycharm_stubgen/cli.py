@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -127,6 +128,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--no-sidecar",
+        action="store_true",
+        help=(
+            "With --install: skip building the Sage API index sidecar the "
+            "PyCharm plugin loads from its configuration directory"
+        ),
+    )
+    parser.add_argument(
+        "--sidecar-dir",
+        default=None,
+        help="Install the index sidecar into this directory instead of every discovered PyCharm configuration directory",
+    )
     parser.add_argument(
         "--runtime-audit",
         action="store_true",
@@ -615,4 +629,34 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Taken over pre-existing stubs: {result.taken_over_files}")
         print(f"Stub target: {result.target_root}")
         print(f"Manifest: {result.manifest}")
+    if args.install and not args.no_sidecar:
+        try:
+            from .sidecar import build_sidecar_files, install_sidecar, sidecar_target_dirs
+
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+            files = build_sidecar_files(
+                Path(summary.output_root), summary.sage_version, python_version
+            )
+            destinations = sidecar_target_dirs(args.sidecar_dir)
+            if not destinations:
+                print(
+                    "Index sidecar: no PyCharm configuration directory found "
+                    "(pass --sidecar-dir); the plugin will use its bundled index",
+                    file=sys.stderr,
+                )
+            else:
+                written = install_sidecar(files, summary.sage_version, destinations)
+                entry_count = len(json.loads(files["sage-api-index.json"]).get("entries", []))
+                print(
+                    f"Index sidecar: installed into {len(written)} IDE config "
+                    f"dir(s) for Sage {summary.sage_version} ({entry_count} entries)"
+                )
+                for path in written:
+                    print(f"  sidecar: {path}")
+        except Exception as exc:
+            print(
+                f"Index sidecar: FAILED ({exc}); stubs are installed and the "
+                "plugin will fall back to its bundled index",
+                file=sys.stderr,
+            )
     return 1 if summary.failed == summary.discovered and summary.discovered else 0
