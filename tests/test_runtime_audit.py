@@ -47,11 +47,17 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertIn("def order(self, *, algorithm=None) -> Any: ...", content)
 
     def test_no_signature_falls_back_to_args_kwargs(self) -> None:
+        from sage_pycharm_stubgen import runtime_audit as ra
+
         class Holder:
             expand = map  # builtin without an inspectable signature
 
         stub = "class Holder:\n    def known(self): ...\n"
-        content, summary = self._audit(stub, {"Holder": Holder})
+        # Shield the recovery tiers so the placeholder path is what's tested;
+        # under a live sage, sage_getdef genuinely recovers `(*args, **kwds)`
+        # for `map` (covered by the recovery tests).
+        with mock.patch.object(ra, "_recovered_argument_lists", return_value=iter([])):
+            content, summary = self._audit(stub, {"Holder": Holder})
 
         self.assertIn("def expand(self, *args, **kwargs) -> Any: ...", content)
         self.assertEqual(summary.fallback_signatures, 1)
@@ -161,6 +167,99 @@ class RuntimeAuditTests(unittest.TestCase):
             rewritten = (module_dir / "mod.pyi").read_text(encoding="utf-8")
             self.assertIn("def value(self) -> Any: ...", rewritten)
 
+
+    def test_docstring_signature_recovery(self) -> None:
+        from sage_pycharm_stubgen import runtime_audit as ra
+
+        self.assertEqual(
+            ra._extract_argument_list("def nbits(self, x=None):", "nbits"),
+            "self, x=None",
+        )
+        self.assertEqual(
+            ra._extract_argument_list("Integer.gcd(self, right)", "gcd"),
+            "self, right",
+        )
+        sig_target = types.SimpleNamespace(
+            __doc__="sig:\n    def m(self, x=2)\n\n    Description."
+        )
+        self.assertEqual(ra._docstring_signature(sig_target, "m"), "self, x=2")
+        embed = types.SimpleNamespace(__doc__="m(self, y=1)\n\nDescription.")
+        self.assertEqual(ra._docstring_signature(embed, "m"), "self, y=1")
+        prose = types.SimpleNamespace(__doc__="Return the bits of the value.")
+        self.assertIsNone(ra._docstring_signature(prose, "bits"))
+
+    def test_render_member_recovers_docstring_signature(self) -> None:
+        from sage_pycharm_stubgen import runtime_audit as ra
+
+        class Holder:
+            __call__ = map  # uninspectable callable
+
+        holder = Holder()
+        holder.__doc__ = "compute(self, x, y=2)\n\nLong description."
+
+        class Runtime:
+            compute = holder
+
+        stub = "class Runtime:\n    def known(self): ...\n"
+        with mock.patch.object(ra, "_sage_getdef_signature", return_value=None):
+            content, summary = audit_stub_text(stub, _runtime(Runtime=Runtime))
+
+        self.assertIn("def compute(self, x, y=2) -> Any: ...", content)
+        self.assertEqual(summary.signatures_recovered, 1)
+        self.assertEqual(summary.fallback_signatures, 0)
+        compile(content, "sample.pyi", "exec")
+
+    def test_mro_aware_skip_and_missing_base_edge(self) -> None:
+        class Base:
+            def inherited(self, x):
+                return x
+
+        class Leaf(Base):
+            def own(self):
+                return 1
+
+        class Orphan(Base):
+            pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pkg = root / "sage" / "demo"
+            pkg.mkdir(parents=True)
+            (root / "sage" / "__init__.pyi").write_text("", encoding="utf-8")
+            (pkg / "__init__.pyi").write_text("", encoding="utf-8")
+            (pkg / "base.pyi").write_text(
+                "class Base:\n    def inherited(self, x) -> int: ...\n",
+                encoding="utf-8",
+            )
+            (pkg / "leaf.pyi").write_text(
+                "from sage.demo.base import Base\n\n\n"
+                "class Leaf(Base):\n    def own(self): ...\n",
+                encoding="utf-8",
+            )
+            (pkg / "orphan.pyi").write_text(
+                "class Orphan:\n    def unrelated(self): ...\n",
+                encoding="utf-8",
+            )
+
+            modules = {
+                "sage.demo.base": _runtime(Base=Base),
+                "sage.demo.leaf": _runtime(Leaf=Leaf),
+                "sage.demo.orphan": _runtime(Orphan=Orphan),
+            }
+
+            def importer(name: str):
+                return modules[name]
+
+            summary = audit_stub_tree(root, importer=importer)
+
+            leaf = (pkg / "leaf.pyi").read_text(encoding="utf-8")
+            orphan = (pkg / "orphan.pyi").read_text(encoding="utf-8")
+            # Leaf: `inherited` visible through the stub base edge — skipped.
+            self.assertNotIn("def inherited", leaf)
+            # Orphan: stub declares no base edge, so the flattened copy must
+            # stay (removing it would lose completion entirely).
+            self.assertIn("def inherited(self, x) -> Any: ...", orphan)
+            self.assertEqual(summary.inherited_skipped, 1)
 
     def test_main_module_is_never_imported(self) -> None:
         # sage.cli.__main__ executes its CLI at import time (an interactive
