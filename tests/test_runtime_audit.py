@@ -352,6 +352,27 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertIn("from sage.sample import Integer", content)
         compile(content, "sample.pyi", "exec")
 
+    def test_observed_sampling_annotates_unannotated_defs(self) -> None:
+        # Pure-Python conversions carry no return annotation at all — the
+        # most common observed-upgrade population.
+        stub = (
+            "class Order:\n"
+            "    def order(self, algorithm=None): ...\n"
+        )
+        observed = {
+            "sage.sample.Order": {
+                "order": {"expression": "OrderElement", "module": "sage.sample"},
+            }
+        }
+        content, summary = audit_stub_text(
+            stub, types.SimpleNamespace(), module_name="sage.sample", observed=observed
+        )
+
+        self.assertIn("def order(self, algorithm=None) -> OrderElement: ...", content)
+        self.assertEqual(summary.observed_returns, 1)
+        self.assertIn("from sage.sample import OrderElement", content)
+        compile(content, "sample.pyi", "exec")
+
     def test_nested_class_resolves_within_same_module_only(self) -> None:
         import sys as _sys
 

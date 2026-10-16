@@ -343,7 +343,10 @@ class EnrichStubFileTests(unittest.TestCase):
             "def __mul__(self, n: Any) -> EllipticCurvePoint_field:",
             content,
         )
-        self.assertIn("def order(self, algorithm=None) -> Integer:", content)
+        self.assertIn(
+            "def order(self, algorithm=None) -> Integer | PlusInfinity:",
+            content,
+        )
         compile(content, "ell_point.pyi", "exec")
 
     def test_curated_element_union_return_with_imports(self) -> None:

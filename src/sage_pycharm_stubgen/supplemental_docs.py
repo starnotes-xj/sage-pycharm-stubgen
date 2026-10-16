@@ -2999,7 +2999,10 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
         "EllipticCurvePoint_field.order": {
             "doc": '返回该点的阶：最小的正整数 n 使 n*self = O（无穷远点）。CTF 中判断基点阶是否为大素数（曲线合法）或等于曲线阶（异常曲线，可 SMART 攻击）。\n\n参数:\n- ``algorithm`` -- （可选）算法选择，一般留空\n\n返回:\nInteger | PlusInfinity -- 点的阶；无穷远点的阶为 1\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: P.order()\n    4',
             "return": "Integer | PlusInfinity",
-            "imports": ['from sage.rings.integer import Integer'],
+            "imports": [
+                'from sage.rings.integer import Integer',
+                'from sage.rings.infinity import PlusInfinity',
+            ],
         },
         "EllipticCurvePoint._acted_upon_": {
             "doc": '标量乘法（CTF 中最常用的点运算）：实现 n*P 或 P*n（n 为整数），返回标量倍点，即把 P 与自己相加 n 次。当 n=0 时返回无穷远点 O=(0:1:0)，当 n<0 时返回 |n|*P 的相反点。P*Q 两个点相乘是非法操作。\n\n参数:\n- ``other`` -- （整数）标量 n\n- ``side`` -- （整数）作用方向（左/右）\n\n返回:\nEllipticCurvePoint -- 点 n*P；与 self 在同一条曲线上。例如对 GF(5) 上 y^2 = x^3 + x + 3 的 4 阶点 P=(4,1) 有 4*P = O\n\n示例::\n\n    sage: E = EllipticCurve(GF(5), [1, 3])\n    sage: P = E(4, 1)\n    sage: 3*P\n    (4 : 4 : 1)\n    sage: 4*P\n    (0 : 1 : 0)',

@@ -695,18 +695,30 @@ def audit_stub_text(
             for stmt in node.body:
                 if (
                     isinstance(stmt, ast.FunctionDef)
-                    and isinstance(stmt.returns, ast.Name)
-                    and stmt.returns.id == "Any"
                     and not stmt.decorator_list
                     and stmt.name in class_observed
+                    and (
+                        # annotated-but-unknown (`-> Any`)
+                        (isinstance(stmt.returns, ast.Name) and stmt.returns.id == "Any")
+                        # pure-Python conversions carry no return annotation
+                        or stmt.returns is None
+                    )
                 ):
                     expr = str(class_observed[stmt.name].get("expression") or "")
-                    if re.fullmatch(r"[A-Za-z_]\w*", expr):
+                    if not re.fullmatch(r"[A-Za-z_]\w*", expr):
+                        continue
+                    if isinstance(stmt.returns, ast.Name):
                         line_replacements.append((stmt.lineno, "-> Any", f"-> {expr}"))
-                        module_of_type = str(class_observed[stmt.name].get("module") or "")
-                        if module_of_type:
-                            used_observed_imports.add((expr, module_of_type))
-                        summary.observed_returns += 1
+                    elif stmt.end_lineno == stmt.lineno:
+                        # single-line def without a return annotation: insert
+                        # before the signature's closing `):`
+                        line_replacements.append((stmt.lineno, "):", f") -> {expr}:"))
+                    else:
+                        continue
+                    module_of_type = str(class_observed[stmt.name].get("module") or "")
+                    if module_of_type:
+                        used_observed_imports.add((expr, module_of_type))
+                    summary.observed_returns += 1
         runtime_cls, resolution = _resolve_runtime_class(runtime_module, module_name, node.name)
         if runtime_cls is None:
             summary.classes_skipped.append(node.name)
