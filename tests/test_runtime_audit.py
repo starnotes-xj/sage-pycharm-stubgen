@@ -162,6 +162,28 @@ class RuntimeAuditTests(unittest.TestCase):
             self.assertIn("def value(self) -> Any: ...", rewritten)
 
 
+    def test_main_module_is_never_imported(self) -> None:
+        # sage.cli.__main__ executes its CLI at import time (an interactive
+        # REPL under a sanitized argv); stubs for __main__ modules are static
+        # documentation and must be skipped, even when the class would match.
+        imported: list[str] = []
+
+        def importer(name: str):
+            imported.append(name)
+            raise ImportError(name)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cli_dir = root / "sage" / "cli"
+            cli_dir.mkdir(parents=True)
+            (cli_dir / "__main__.pyi").write_text(
+                "class Main:\n    def known(self): ...\n", encoding="utf-8"
+            )
+            summary = audit_stub_tree(root, importer=importer)
+
+        self.assertEqual(imported, [])
+        self.assertEqual(summary.methods_added, 0)
+
     def test_importers_see_sanitized_argv(self) -> None:
         import sys as _sys
 

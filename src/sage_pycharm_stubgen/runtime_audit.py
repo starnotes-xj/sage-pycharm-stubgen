@@ -279,6 +279,11 @@ def _audit_modules(
         module_name = stub_module_name(stub_root, stub)
         if module_name is None:
             continue
+        # sage.cli.__main__ and friends EXECUTE their CLI at import time;
+        # with a sanitized argv that means an interactive REPL.  A stub for
+        # a __main__ module is static documentation only — never import it.
+        if module_name.rpartition(".")[2] == "__main__":
+            continue
         try:
             runtime_module = importer(module_name)
         except Exception:  # noqa: BLE001 - optional-department imports are expected to fail
