@@ -69,6 +69,11 @@ def build_sidecar_files(
 
     index = json.loads(index_text)
     entry_count = len(index.get("entries", []))
+    # The vendored generator leaves index.artifactId unset when invoked
+    # directly; the envelope/receipt carry it and the plugin cross-checks
+    # them, so inject a consistent value before hashing.
+    index["artifactId"] = artifact_id
+    index_text = json.dumps(index, ensure_ascii=False, separators=(",", ":")) + "\n"
     index_sha = _sha256_text(index_text)
     identity = hashlib.sha256(
         "\n".join(sorted(e.get("qualifiedName", "") for e in index.get("entries", []))).encode("utf-8")
@@ -124,6 +129,10 @@ def discover_pycharm_config_dirs() -> list[Path]:
 
     Windows: ``%APPDATA%\\JetBrains\\PyCharm*``; macOS: ``~/Library/Application
     Support/JetBrains/PyCharm*``; Linux: ``~/.config/JetBrains/PyCharm*``.
+    Under WSL the Windows-side configuration directories are discovered
+    through ``/mnt/c/Users/*/AppData/Roaming/JetBrains`` — the stub tree is
+    generated inside WSL while the IDE runs on Windows, so that is where the
+    sidecar must land.
     """
     candidates: list[Path] = []
     home = Path.home()
@@ -139,6 +148,20 @@ def discover_pycharm_config_dirs() -> list[Path]:
         for child in sorted(base.glob("PyCharm*")):
             if child.is_dir() and child not in candidates:
                 candidates.append(child)
+    # WSL: the IDE runs on Windows; its config lives under /mnt/c.
+    for users_root in (Path("/mnt/c/Users"),):
+        if not users_root.is_dir():
+            continue
+        for user_dir in sorted(users_root.iterdir()):
+            try:
+                jetbrains = user_dir / "AppData" / "Roaming" / "JetBrains"
+                if not jetbrains.is_dir():
+                    continue
+            except OSError:
+                continue  # sandboxed/foreign user profiles are not stat-able
+            for child in sorted(jetbrains.glob("PyCharm*")):
+                if child.is_dir() and child not in candidates:
+                    candidates.append(child)
     return candidates
 
 
