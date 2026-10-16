@@ -261,6 +261,72 @@ class RuntimeAuditTests(unittest.TestCase):
             self.assertIn("def inherited(self, x) -> Any: ...", orphan)
             self.assertEqual(summary.inherited_skipped, 1)
 
+    def test_deep_scan_resolves_class_defined_but_not_exported(self) -> None:
+        import sys as _sys
+
+        from sage_pycharm_stubgen import runtime_audit as ra
+
+        def value(self):
+            return 1
+
+        Klass = type("Klass", (), {"value": value, "__module__": "sage.demo.mod"})
+        holder = types.ModuleType("sage.demo.holder")
+        holder.Klass = Klass
+        saved = _sys.modules.get("sage.demo.holder")
+        _sys.modules["sage.demo.holder"] = holder
+        ra._deep_class_index = None
+        try:
+            stub = "class Klass:\n    def known(self): ...\n"
+            content, summary = audit_stub_text(
+                stub, types.SimpleNamespace(), module_name="sage.demo.mod"
+            )
+        finally:
+            if saved is None:
+                _sys.modules.pop("sage.demo.holder", None)
+            else:
+                _sys.modules["sage.demo.holder"] = saved
+            ra._deep_class_index = None
+
+        self.assertIn("def value(self) -> Any: ...", content)
+        self.assertEqual(summary.classes_resolved_deep, 1)
+        self.assertEqual(summary.classes_skipped, [])
+
+    def test_category_variant_resolves_to_base_class(self) -> None:
+        class Base:
+            def value(self):
+                return 1
+
+        stub = "class Base_with_category:\n    def known(self): ...\n"
+        content, summary = audit_stub_text(
+            stub, _runtime(Base=Base), module_name="sage.demo.cat"
+        )
+
+        self.assertIn("def value(self) -> Any: ...", content)
+        self.assertEqual(summary.classes_skipped, [])
+
+    def test_deep_scan_rejects_wrong_module_collision(self) -> None:
+        import sys as _sys
+
+        from sage_pycharm_stubgen import runtime_audit as ra
+
+        impostor = type("Shared", (), {"__module__": "sage.demo.other"})
+        holder = types.ModuleType("sage.demo.holder2")
+        holder.Shared = impostor
+        _sys.modules["sage.demo.holder2"] = holder
+        ra._deep_class_index = None
+        try:
+            stub = "class Shared:\n    def known(self): ...\n"
+            content, summary = audit_stub_text(
+                stub, types.SimpleNamespace(), module_name="sage.demo.mod"
+            )
+        finally:
+            _sys.modules.pop("sage.demo.holder2", None)
+            ra._deep_class_index = None
+
+        self.assertEqual(content, stub)
+        self.assertEqual(summary.classes_skipped, ["Shared"])
+        self.assertEqual(summary.classes_resolved_deep, 0)
+
     def test_main_module_is_never_imported(self) -> None:
         # sage.cli.__main__ executes its CLI at import time (an interactive
         # REPL under a sanitized argv); stubs for __main__ modules are static

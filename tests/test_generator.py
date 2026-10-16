@@ -202,6 +202,40 @@ def IntegerMod(parent, value): ...
         # Non-sage target module -> keep the assignment.
         self.assertIn("to_hex = LazyImport('matplotlib.colors', 'to_hex')", content)
 
+    def test_method_alias_shadowing_ancestor_is_left_unpromoted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "sage" / "demo"
+            target.mkdir(parents=True)
+            (root / "sage" / "__init__.pyi").write_text("", encoding="utf-8")
+            (target / "__init__.pyi").write_text("", encoding="utf-8")
+            (target / "base.pyi").write_text(
+                "class Base:\n    def is_zero(self) -> bool: ...\n",
+                encoding="utf-8",
+            )
+            stub = target / "leaf.pyi"
+            stub.write_text(
+                "from sage.demo.base import Base\n\n\n"
+                "class Leaf(Base):\n"
+                "    def helper(self) -> int: ...\n"
+                "    is_zero = helper\n"
+                "    fresh = helper\n",
+                encoding="utf-8",
+            )
+
+            from sage_pycharm_stubgen.runtime_audit import build_stub_hierarchy
+
+            changed = enhance_method_aliases(root, hierarchy=build_stub_hierarchy(root))
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)  # `fresh` has no ancestor declaration: promoted
+        self.assertIn("def fresh(self) -> int: ...", result)
+        # is_zero is a def on the stub base: the promoted copy would shadow the
+        # ancestor's precise `-> bool` with `-> Any`, so the alias assignment
+        # stays as-is and MRO resolution keeps the member callable-complete.
+        self.assertIn("is_zero = helper", result)
+        self.assertNotIn("def is_zero(self) -> int: ...", result)
+
     def test_method_aliases_promoted_to_defs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

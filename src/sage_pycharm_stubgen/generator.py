@@ -16,7 +16,7 @@ from types import ModuleType
 from typing import Any, Iterable
 
 from .factory_inference import FactoryInference, factory_return_map, infer_factory_returns
-from .docstring_enrich import EnrichmentSummary, enrich_stubs, _insert_imports, _quote
+from .docstring_enrich import EnrichmentSummary, enrich_stubs, _insert_imports, _quote, stub_module_name
 from .lint import fix_unresolved_annotations, lint_generated_stubs
 from .merge import merge_generated_stubs
 from .runtime_audit import RuntimeAuditSummary
@@ -558,7 +558,10 @@ def enhance_factory_instances(output_root: Path) -> bool:
     return changed
 
 
-def enhance_method_aliases(output_root: Path) -> bool:
+def enhance_method_aliases(
+    output_root: Path,
+    hierarchy: Any | None = None,
+) -> bool:
     """Turn class-body method aliases (``X = Y``, Y a same-class method) into
     real ``def X`` declarations.
 
@@ -568,9 +571,15 @@ def enhance_method_aliases(output_root: Path) -> bool:
     callable icon, no parameter list, no return type).  Copy the aliased
     method's signature and return annotation into a ``def`` so the alias is
     a first-class method.  Multi-line assignments are left untouched.
+
+    When ``hierarchy`` (the stub-side class graph) is given, an alias whose
+    name is already a def on any stub base is left as an assignment: the
+    promoted ``-> Any`` def would shadow the ancestor's precise return while
+    MRO resolution already makes the member callable-complete.
     """
     changed = False
     for pyi in output_root.rglob("*.pyi"):
+        module_name = stub_module_name(output_root, pyi)
         text = pyi.read_text(encoding="utf-8", errors="replace")
         try:
             tree = ast.parse(text)
@@ -594,6 +603,12 @@ def enhance_method_aliases(output_root: Path) -> bool:
                     and isinstance(stmt.value, ast.Name)
                     and stmt.value.id in methods
                     and stmt.lineno == stmt.end_lineno
+                ):
+                    continue
+                if (
+                    hierarchy is not None
+                    and module_name is not None
+                    and hierarchy.has_callable_visible(module_name, node.name, stmt.targets[0].id)
                 ):
                     continue
                 source = methods[stmt.value.id]
@@ -1048,7 +1063,9 @@ def generate(
         summary.enhanced.append(
             "module-level factory instances re-exported via all.pyi declarations"
         )
-    if enhance_method_aliases(output_root):
+    from .runtime_audit import build_stub_hierarchy
+
+    if enhance_method_aliases(output_root, hierarchy=build_stub_hierarchy(output_root)):
         summary.enhanced.append(
             "class-body method aliases promoted to def declarations"
         )

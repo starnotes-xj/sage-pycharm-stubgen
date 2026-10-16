@@ -57,6 +57,7 @@ class RuntimeAuditSummary:
     fallback_signatures: int = 0
     signatures_recovered: int = 0
     inherited_skipped: int = 0
+    classes_resolved_deep: int = 0
     modules_skipped: list[str] = dataclasses.field(default_factory=list)
     classes_skipped: list[str] = dataclasses.field(default_factory=list)
     errors: list[str] = dataclasses.field(default_factory=list)
@@ -82,6 +83,7 @@ class _StubHierarchy:
 
     def __init__(self) -> None:
         self._declared: dict[tuple[str, str], set[str]] = {}
+        self._defs: dict[tuple[str, str], set[str]] = {}
         self._bases: dict[tuple[str, str], list[tuple[str | None, str]]] = {}
         self._memo: dict[tuple[tuple[str, str], str], bool] = {}
 
@@ -102,6 +104,11 @@ class _StubHierarchy:
                     continue
                 key = (module, node.name)
                 hierarchy._declared[key] = _declared_member_names(node)
+                hierarchy._defs[key] = {
+                    stmt.name
+                    for stmt in node.body
+                    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                }
                 hierarchy._bases[key] = [
                     resolved
                     for resolved in (
@@ -112,6 +119,15 @@ class _StubHierarchy:
                 ]
         return hierarchy
 
+    def has_callable_visible(self, module: str, classname: str, member: str) -> bool:
+        """True when ``member`` is a def/class on ``classname`` or a stub base.
+
+        Assignments do not count: an ``x = y`` alias is exactly what the
+        alias-promotion pass is deciding about, so it must not satisfy its
+        own visibility check.
+        """
+        return self._visible(module, classname, member, self._defs)
+
     def has_visible(self, module: str, classname: str, member: str) -> bool:
         """True when ``member`` is declared by ``classname`` or any stub base.
 
@@ -119,8 +135,17 @@ class _StubHierarchy:
         would be wrong on diamonds, where a sibling branch's declaration is
         not visible from every visited ancestor.
         """
+        return self._visible(module, classname, member, self._declared)
+
+    def _visible(
+        self,
+        module: str,
+        classname: str,
+        member: str,
+        index: dict[tuple[str, str], set[str]],
+    ) -> bool:
         memo = self._memo
-        start = ((module, classname), member)
+        start = ((module, classname), member, id(index))
         cached = memo.get(start)
         if cached is not None:
             return cached
@@ -133,7 +158,7 @@ class _StubHierarchy:
             if key in seen:
                 continue
             seen.add(key)
-            if member in self._declared.get(key, ()):
+            if member in index.get(key, ()):
                 found = True
                 break
             for base_module, base_name in self._bases.get(key, ()):
@@ -198,6 +223,85 @@ def _resolve_base(
     # Same-module class (or an unresolvable name — treated as a leaf edge,
     # which keeps the member copy on the safe side).
     return module, dotted.split(".")[0]
+
+
+def build_stub_hierarchy(stub_root: Path) -> _StubHierarchy:
+    """Public entry: read the stub-side class graph (used by the audit and
+    by the alias-promotion pass, which must not shadow ancestor methods)."""
+    return _StubHierarchy.build(stub_root)
+
+
+# --------------------------------------------------------------------------
+# runtime class resolution (sys.modules deep scan)
+# --------------------------------------------------------------------------
+
+_deep_class_index: dict[str, list[type]] | None = None
+
+
+def _deep_namespaced_classes() -> dict[str, list[type]]:
+    """Index every public sage.* class currently loaded, keyed by name.
+
+    Built lazily on the first unresolved lookup — by then the audit itself
+    has imported most of sage, so coverage is at its best.  Only exact
+    ``__module__`` matches are ever accepted by the resolver; the index
+    intentionally holds ambiguous entries so a wrong-module collision
+    stays detectable and rejectable.
+    """
+    global _deep_class_index
+    if _deep_class_index is None:
+        index: dict[str, list[type]] = {}
+        for module_obj in list(sys.modules.values()):
+            module_name = getattr(module_obj, "__name__", "")
+            if not module_name.startswith("sage."):
+                continue
+            try:
+                namespace = vars(module_obj)
+            except TypeError:
+                continue
+            for name, obj in namespace.items():
+                if name.startswith("_"):
+                    continue
+                if inspect.isclass(obj) and getattr(obj, "__module__", "").startswith("sage."):
+                    index.setdefault(name, []).append(obj)
+        _deep_class_index = index
+    return _deep_class_index
+
+
+_CATEGORY_VARIANT_RE = re.compile(r"^(?P<base>.+?)_(?:with_category|with_realization)$")
+
+
+def _resolve_runtime_class(
+    runtime_module: object,
+    module_name: str,
+    class_name: str,
+) -> tuple[object | None, str]:
+    """Locate the live class behind a stub class declaration.
+
+    Resolution order: module namespace, dynamic category-variant suffix
+    (``X_with_category`` -> ``X`` — the category join subclasses at runtime,
+    but the base class carries the same member set), ancestor package
+    namespaces, then the sys.modules deep scan restricted to classes whose
+    ``__module__`` equals the stub's module (fail-closed on ambiguity).
+    """
+    cls = getattr(runtime_module, class_name, None)
+    if inspect.isclass(cls):
+        return cls, "direct"
+    variant = _CATEGORY_VARIANT_RE.match(class_name)
+    if variant:
+        cls = getattr(runtime_module, variant.group("base"), None)
+        if inspect.isclass(cls):
+            return cls, "category_variant"
+    parts = module_name.split(".")
+    for depth in range(len(parts) - 1, 0, -1):
+        parent = sys.modules.get(".".join(parts[:depth]))
+        if parent is not None:
+            cls = getattr(parent, class_name, None)
+            if inspect.isclass(cls):
+                return cls, "package"
+    for candidate in _deep_namespaced_classes().get(class_name, ()):
+        if getattr(candidate, "__module__", "") == module_name:
+            return candidate, "deep"
+    return None, "unresolved"
 
 
 # --------------------------------------------------------------------------
@@ -498,10 +602,12 @@ def audit_stub_text(
         if not node.body or node.body[0].lineno == node.lineno:
             summary.classes_skipped.append(node.name)
             continue
-        runtime_cls = getattr(runtime_module, node.name, None)
-        if runtime_cls is None or not inspect.isclass(runtime_cls):
+        runtime_cls, resolution = _resolve_runtime_class(runtime_module, module_name, node.name)
+        if runtime_cls is None:
             summary.classes_skipped.append(node.name)
             continue
+        if resolution == "deep":
+            summary.classes_resolved_deep += 1
         declared = _declared_member_names(node)
         indent = _class_indent(node)
         new_lines: list[str] = []
@@ -571,6 +677,8 @@ def audit_stub_tree(
     """
     summary = RuntimeAuditSummary()
     hierarchy = _StubHierarchy.build(stub_root)
+    global _deep_class_index
+    _deep_class_index = None  # rebuild per run: sys.modules grows while auditing
     # Some Sage modules parse sys.argv at import time and would mistake our
     # own CLI flags for sage CLI arguments, aborting the audit.  Hide them
     # for the duration; argv is restored no matter how the loop exits.
@@ -617,6 +725,7 @@ def _audit_modules(
         summary.fallback_signatures += file_summary.fallback_signatures
         summary.signatures_recovered += file_summary.signatures_recovered
         summary.inherited_skipped += file_summary.inherited_skipped
+        summary.classes_resolved_deep += file_summary.classes_resolved_deep
         summary.classes_skipped.extend(f"{module_name}.{n}" for n in file_summary.classes_skipped)
         summary.errors.extend(f"{module_name}: {e}" for e in file_summary.errors)
         if new_text != original:
