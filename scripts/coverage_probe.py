@@ -1,8 +1,19 @@
-"""Coverage probe: compare public runtime members of key classes against stubs."""
+"""Coverage probe: compare public runtime members of key classes against stubs.
+
+Missing = not declared by the class itself AND not visible through its stub
+base chain (the same predicate the runtime audit and, effectively, PyCharm's
+own .pyi MRO resolution use).
+"""
 
 import ast
 import importlib
 import inspect
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from sage_pycharm_stubgen.runtime_audit import _StubHierarchy  # noqa: E402
 
 
 def _has_sig(cls, n):
@@ -48,6 +59,7 @@ CASES = [
 
 import sage.all  # noqa: F401,E402
 
+hierarchy = _StubHierarchy.build(Path("."))
 for modname, clsname, stubrel in CASES:
     mod = importlib.import_module(modname)
     cls = getattr(mod, clsname)
@@ -61,8 +73,13 @@ for modname, clsname, stubrel in CASES:
         if m.startswith("sage."):
             sage_defined.append(n)
     stub = stub_names(stubrel, clsname)
-    missing = sorted(set(sage_defined) - stub)
+    module_name = stubrel[:-4].replace("/", ".")
+    missing = sorted(
+        n for n in set(sage_defined) - stub
+        if not hierarchy.has_visible(module_name, clsname, n)
+    )
     pct = 100 * (len(sage_defined) - len(missing)) / max(len(sage_defined), 1)
     print(f"{clsname}: runtime={len(sage_defined)} stub={len(stub)} missing={len(missing)} coverage={pct:.1f}%")
     if missing:
         print("   missing:", missing[:12])
+
