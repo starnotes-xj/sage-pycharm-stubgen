@@ -298,6 +298,25 @@ def _resolve_runtime_class(
             cls = getattr(parent, class_name, None)
             if inspect.isclass(cls):
                 return cls, "package"
+    # stubgen flattens Sage's nested element/computation classes: the source
+    # defines ``class Element`` inside an algebra class body, so the stub
+    # declares a top-level class the module namespace never exported.  Scan
+    # this module's own classes one hop deep, and only accept a nested class
+    # actually defined in the same module (an imported owner's nested class
+    # would silently document a foreign type).
+    try:
+        namespace = vars(runtime_module)
+    except TypeError:
+        namespace = {}
+    for owner in namespace.values():
+        if not inspect.isclass(owner) or getattr(owner, "__module__", "") != module_name:
+            continue
+        try:
+            nested = vars(owner).get(class_name)
+        except TypeError:
+            continue
+        if inspect.isclass(nested) and getattr(nested, "__module__", "") == module_name:
+            return nested, "nested"
     for candidate in _deep_namespaced_classes().get(class_name, ()):
         if getattr(candidate, "__module__", "") == module_name:
             return candidate, "deep"

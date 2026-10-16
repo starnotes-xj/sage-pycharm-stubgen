@@ -327,6 +327,36 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertEqual(summary.classes_skipped, ["Shared"])
         self.assertEqual(summary.classes_resolved_deep, 0)
 
+    def test_nested_class_resolves_within_same_module_only(self) -> None:
+        import sys as _sys
+
+        from sage_pycharm_stubgen import runtime_audit as ra
+
+        # Owner defined in the stub's own module: its nested Element resolves.
+        def value(self):
+            return 1
+
+        Nested = type("Element", (), {"value": value, "__module__": "sage.demo.mod"})
+        runtime_module = types.ModuleType("sage.demo.mod")
+        Owner = type("Owner", (), {"Element": Nested, "__module__": "sage.demo.mod"})
+        runtime_module.Owner = Owner
+        # An imported owner from ANOTHER module must not satisfy the lookup:
+        # its nested Element documents a foreign type.
+        class ForeignOwner:
+            pass
+
+        ForeignOwner.__module__ = "sage.demo.other"
+        ForeignElement = type("Element", (), {"__module__": "sage.demo.other"})
+        runtime_module.ForeignOwner = ForeignOwner
+
+        stub = "class Element:\n    def known(self): ...\n"
+        content, summary = audit_stub_text(
+            stub, runtime_module, module_name="sage.demo.mod"
+        )
+
+        self.assertIn("def value(self) -> Any: ...", content)
+        self.assertEqual(summary.classes_skipped, [])
+
     def test_main_module_is_never_imported(self) -> None:
         # sage.cli.__main__ executes its CLI at import time (an interactive
         # REPL under a sanitized argv); stubs for __main__ modules are static
