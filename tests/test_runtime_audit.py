@@ -114,16 +114,18 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertEqual(content, stub)
         self.assertEqual(summary.classes_skipped, ["Ghost"])
 
-    def test_inline_body_class_is_skipped(self) -> None:
-        class Inline:
-            def value(self):
+    def test_inline_class_without_runtime_resolution_stays_untouched(self) -> None:
+        # An inline class the runtime cannot resolve is left exactly as-is;
+        # resolvable inline classes are expanded instead (see the expansion test).
+        class Other:
+            def known(self):
                 return 1
 
-        stub = "class Inline: ...\n\nclass Other:\n    def known(self): ...\n"
-        content, summary = self._audit(stub, {"Inline": Inline})
+        stub = "class Ghost: ...\n\nclass Other:\n    def known(self): ...\n"
+        content, summary = self._audit(stub, {"Other": Other})
 
         self.assertEqual(content, stub)
-        self.assertEqual(sorted(summary.classes_skipped), ["Inline", "Other"])
+        self.assertEqual(sorted(summary.classes_skipped), ["Ghost"])
 
     def test_unparseable_result_reverts_the_file(self) -> None:
         class Demo:
@@ -356,6 +358,23 @@ class RuntimeAuditTests(unittest.TestCase):
 
         self.assertIn("def value(self) -> Any: ...", content)
         self.assertEqual(summary.classes_skipped, [])
+
+    def test_inline_class_expanded_and_audited_when_runtime_members_exist(self) -> None:
+        class Inline:
+            def value(self):
+                return 1
+
+        stub = "class Inline: ...\n\nclass Other:\n    def known(self): ...\n"
+        content, summary = self._audit(stub, {"Inline": Inline, "Other": int})
+
+        # Inline expanded into a real body with the audited member; Other
+        # (runtime int) gains nothing addable beyond what a stub declares, so
+        # it is simply skipped as before.
+        self.assertIn("class Inline:\n    pass\n", content)
+        self.assertIn("def value(self) -> Any: ...", content)
+        self.assertEqual(summary.classes_expanded, 1)
+        self.assertNotIn("Inline", summary.classes_skipped)
+        compile(content, "sample.pyi", "exec")
 
     def test_main_module_is_never_imported(self) -> None:
         # sage.cli.__main__ executes its CLI at import time (an interactive

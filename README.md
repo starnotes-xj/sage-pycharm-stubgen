@@ -31,8 +31,13 @@ Inside the Sage environment (WSL / native / Docker), run:
 
 ```bash
 python -m pip install sage-pycharm-stubgen
-sage-pycharm-stubgen --install     # generates and installs the .pyi stubs
+python -m sage_pycharm_stubgen --install --runtime-audit
 ```
+
+`--install` also builds the Sage API index sidecar and installs it into every
+JetBrains PyCharm configuration directory found on the machine (a WSL run
+discovers the Windows-side config through `/mnt/c/Users/*`; `--sidecar-dir`
+overrides the destination, `--no-sidecar` skips this step).
 
 Then point PyCharm at that Sage interpreter (WSL SDK): completion and
 Ctrl+Q work in any project without extra Sources Roots, because the stubs
@@ -315,6 +320,26 @@ sage-pycharm-stubgen translate-docs --apply-only
 
 Machine translations are readable but unverified; the curated entries
 remain the only layer whose examples are executed against Sage.
+
+## Runtime audit
+
+`--runtime-audit` reconciles the generated stubs against the live Sage
+runtime after enrichment and merge, and appends declarations for public
+members the source scan missed.  Resolution tiers for a stub class, first
+hit wins: module namespace, `_with_category`/`_with_realization` dynamic
+variants, ancestor package namespaces, same-module nested classes
+(stubgen flattens Sage's inner element classes), then a `sys.modules` deep
+scan restricted to exact `__module__` matches.  Signature tiers: real
+`inspect` signatures, then `sage_getdef`/docstring/`.pyx`-source recovery,
+then a `(*args, **kwargs)` placeholder.  Members already declared on the
+class or any stub base are skipped (no flattened `Any` shadows an ancestor's
+precise return), and `class X: ...` inline bodies are expanded when the
+runtime class has members to add.
+
+Skip taxonomy after all tiers (measured on Sage 10.9): optional-dependency
+modules, inline classes whose runtime has nothing addable, and flattened
+nested helpers with no direct usage path — these keep their converted
+content and are intentionally not audited.
 
 ## Conformance check
 

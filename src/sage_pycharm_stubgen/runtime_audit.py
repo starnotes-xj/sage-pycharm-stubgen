@@ -56,6 +56,7 @@ class RuntimeAuditSummary:
     attributes_added: int = 0
     fallback_signatures: int = 0
     signatures_recovered: int = 0
+    classes_expanded: int = 0
     inherited_skipped: int = 0
     classes_resolved_deep: int = 0
     modules_skipped: list[str] = dataclasses.field(default_factory=list)
@@ -598,6 +599,59 @@ def _has_typing_any_import(tree: ast.AST) -> bool:
     return False
 
 
+def _expand_inline_classes(
+    stub_text: str,
+    tree: ast.AST,
+    runtime_module: object,
+    module_name: str,
+) -> tuple[str, int] | None:
+    """Expand ``class X: ...`` bodies so their members become appendable.
+
+    stubgen-pyx renders empty classes on a single line; the audit cannot
+    append members to a body that does not exist yet.  Only classes that
+    resolve at runtime AND have at least one addable public member are
+    expanded (the placeholder ``pass`` keeps the file parseable even when
+    the hierarchy gate later skips every candidate).  Applying expansions in
+    descending line order keeps the earlier line numbers valid.
+    """
+    inline: list[tuple[int, ast.ClassDef, type]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        if node.body and node.body[0].lineno != node.lineno:
+            continue
+        runtime_cls, _ = _resolve_runtime_class(runtime_module, module_name, node.name)
+        if runtime_cls is None or not inspect.isclass(runtime_cls):
+            continue
+        addable = [
+            name
+            for name in dir(runtime_cls)
+            if not name.startswith("_") and name not in _declared_member_names(node)
+        ]
+        if not addable:
+            continue
+        inline.append((node.lineno, node, runtime_cls))
+
+    if not inline:
+        return None
+
+    lines = stub_text.splitlines()
+    expanded = 0
+    for lineno, _node, runtime_cls in sorted(inline, key=lambda item: item[0], reverse=True):
+        line = lines[lineno - 1]
+        marker = line.rfind("...")
+        if marker < 0:
+            continue
+        # The colon already precedes the ellipsis: ``class Inline: ...``
+        # becomes ``class Inline:`` with a placeholder body line below.
+        lines[lineno - 1] = line[:marker].rstrip()
+        lines.insert(lineno, "    pass")
+        expanded += 1
+    if not expanded:
+        return None
+    return "\n".join(lines) + "\n", expanded
+
+
 def audit_stub_text(
     stub_text: str,
     runtime_module: object,
@@ -613,6 +667,10 @@ def audit_stub_text(
     """
     summary = RuntimeAuditSummary()
     tree = ast.parse(stub_text)
+    expansion = _expand_inline_classes(stub_text, tree, runtime_module, module_name)
+    if expansion is not None:
+        stub_text, summary.classes_expanded = expansion
+        tree = ast.parse(stub_text)
 
     edits: list[tuple[int, list[str]]] = []
     for node in ast.walk(tree):
