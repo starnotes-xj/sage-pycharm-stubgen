@@ -987,17 +987,28 @@ def _apply_declarations(
     inserted = 0
     extra_imports: list[str] = []
     if pending_class:
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
-            for _member, declaration, entry in pending_class.pop(node.name, []):
-                if not node.body:
-                    continue
-                anchor = node.body[-1].end_lineno or node.body[-1].lineno
-                indent = " " * (node.col_offset + 4)
-                lines.insert(anchor, indent + normalize(declaration))
+        # Insertions shift every later line, so a class anchor taken from the
+        # pre-insertion tree is stale by the number of lines already inserted
+        # above it.  Insert in ascending anchor order and track that shift;
+        # otherwise a declare lands N lines early — inside a preceding
+        # method's docstring, where no consumer (AST, PyCharm, the index
+        # generator) can see it.
+        targets = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and node.name in pending_class and node.body
+        ]
+        targets.sort(key=lambda n: n.body[-1].end_lineno or n.body[-1].lineno)
+        shift = 0
+        for node in targets:
+            entries_to_insert = pending_class.pop(node.name, [])
+            base_anchor = node.body[-1].end_lineno or node.body[-1].lineno
+            indent = " " * (node.col_offset + 4)
+            for offset, (_member, declaration, entry) in enumerate(entries_to_insert):
+                lines.insert(base_anchor + shift + offset, indent + normalize(declaration))
                 extra_imports.extend(entry.get("imports", []))
                 inserted += 1
+            shift += len(entries_to_insert)
     if pending_module:
         for _name, declaration, entry in pending_module:
             lines.append(normalize(declaration))
@@ -1069,7 +1080,9 @@ def enrich_stub_file(
         ):
             planner.plan_class(node, node.name)
 
-    if not planner.edits and not planner.extra_imports:
+    # `inserted` declares were already spliced into `lines` above; a declare-only
+    # entry (no doc, no imports) must still be written out.
+    if not planner.edits and not planner.extra_imports and not inserted:
         return
     planner.finish()
     stub.write_text(newline.join(lines) + newline, encoding="utf-8")

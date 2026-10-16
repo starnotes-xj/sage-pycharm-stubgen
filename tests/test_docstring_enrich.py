@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import tempfile
 import unittest
 from pathlib import Path
@@ -211,6 +212,41 @@ class EnrichStubFileTests(unittest.TestCase):
             content,
         )
         self.assertEqual(summary.declarations_added, 1)
+        compile(content, "sample.pyi", "exec")
+
+    def test_declares_in_later_class_survive_earlier_class_inserts(self) -> None:
+        # Regression: the second class's declare used the pre-insertion tree's
+        # anchor; the first class's inserted line shifted everything, so the
+        # declare landed inside the preceding method's docstring — valid
+        # Python, but invisible to ast, PyCharm and the index generator.
+        stub = (
+            "class Base:\n"
+            "    def gen(self, n=0): ...\n"
+            "\n"
+            "\n"
+            "class Leaf(Base):\n"
+            "    def tail(self, x):\n"
+            '        r"""Long documentation.\n'
+            "\n"
+            "        sage: Leaf(1).tail(2)\n"
+            '        3"""\n'
+            "        return x\n"
+        )
+        curated = {
+            "Base.is_zero": {"declare": "def is_zero(self) -> bool"},
+            "Leaf.__rmul__": {"declare": "def __rmul__(self, n) -> Leaf"},
+        }
+        content, summary = self._enrich(stub, None, curated)
+
+        self.assertEqual(summary.declarations_added, 2)
+        tree = ast.parse(content)
+        classes = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
+        base_methods = [s.name for s in classes["Base"].body if isinstance(s, ast.FunctionDef)]
+        leaf_methods = [s.name for s in classes["Leaf"].body if isinstance(s, ast.FunctionDef)]
+        self.assertEqual(base_methods, ["gen", "is_zero"])
+        # __rmul__ must be a CLASS-LEVEL member of Leaf, positioned after the
+        # docstring-carrying tail method — not swallowed into its body.
+        self.assertEqual(leaf_methods, ["tail", "__rmul__"])
         compile(content, "sample.pyi", "exec")
 
     def test_curated_return_may_reference_the_declared_class_itself(self) -> None:
