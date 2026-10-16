@@ -57,6 +57,8 @@ class RuntimeAuditSummary:
     fallback_signatures: int = 0
     signatures_recovered: int = 0
     classes_expanded: int = 0
+    observed_returns: int = 0
+    sample_batches_crashed: int = 0
     inherited_skipped: int = 0
     classes_resolved_deep: int = 0
     modules_skipped: list[str] = dataclasses.field(default_factory=list)
@@ -658,6 +660,7 @@ def audit_stub_text(
     *,
     module_name: str = "",
     hierarchy: _StubHierarchy | None = None,
+    observed: dict[str, dict[str, dict]] | None = None,
 ) -> tuple[str, RuntimeAuditSummary]:
     """Append missing public runtime members to every class in one stub.
 
@@ -673,20 +676,43 @@ def audit_stub_text(
         tree = ast.parse(stub_text)
 
     edits: list[tuple[int, list[str]]] = []
+    line_replacements: list[tuple[int, str, str]] = []
+    used_observed_imports: set[tuple[str, str]] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
         if not node.body or node.body[0].lineno == node.lineno:
             summary.classes_skipped.append(node.name)
             continue
+        declared = _declared_member_names(node)
+        indent = _class_indent(node)
+        class_observed = (observed or {}).get(f"{module_name}.{node.name}") or {}
+        # Observed sampling upgrades existing ``-> Any`` operator defs to the
+        # double-run-stable type recorded by the sampler subprocess.  The
+        # observed evidence came from the live runtime, so it applies
+        # regardless of whether the audit itself re-resolves the class.
+        if class_observed:
+            for stmt in node.body:
+                if (
+                    isinstance(stmt, ast.FunctionDef)
+                    and isinstance(stmt.returns, ast.Name)
+                    and stmt.returns.id == "Any"
+                    and not stmt.decorator_list
+                    and stmt.name in class_observed
+                ):
+                    expr = str(class_observed[stmt.name].get("expression") or "")
+                    if re.fullmatch(r"[A-Za-z_]\w*", expr):
+                        line_replacements.append((stmt.lineno, "-> Any", f"-> {expr}"))
+                        module_of_type = str(class_observed[stmt.name].get("module") or "")
+                        if module_of_type:
+                            used_observed_imports.add((expr, module_of_type))
+                        summary.observed_returns += 1
         runtime_cls, resolution = _resolve_runtime_class(runtime_module, module_name, node.name)
         if runtime_cls is None:
             summary.classes_skipped.append(node.name)
             continue
         if resolution == "deep":
             summary.classes_resolved_deep += 1
-        declared = _declared_member_names(node)
-        indent = _class_indent(node)
         new_lines: list[str] = []
         for name in sorted(n for n in dir(runtime_cls) if not n.startswith("_")):
             if name in declared:
@@ -713,10 +739,16 @@ def audit_stub_text(
             insert_at = node.body[-1].end_lineno
             edits.append((insert_at, new_lines))
 
-    if not edits:
+    if not edits and not line_replacements:
         return stub_text, summary
 
     lines = stub_text.splitlines(keepends=True)
+    # Same-line replacements never shift line numbers, so apply them first
+    # and keep the (pre-computed) insertion indexes valid.
+    for lineno, old, new in line_replacements:
+        target = lines[lineno - 1]
+        if old in target:
+            lines[lineno - 1] = target.replace(old, new, 1)
     for insert_at, new_lines in sorted(edits, key=lambda e: e[0], reverse=True):
         lines[insert_at:insert_at] = [line if line.endswith("\n") else line + "\n" for line in new_lines]
 
@@ -728,8 +760,13 @@ def audit_stub_text(
         summary.errors.append(f"revert: {exc}")
         return stub_text, summary
 
+    needed_imports: list[str] = []
     if _uses_any(new_text) and not _has_typing_any_import(new_tree):
-        _insert_imports(lines, new_tree, ["from typing import Any\n"])
+        needed_imports.append("from typing import Any\n")
+    for expr, module in sorted(used_observed_imports):
+        needed_imports.append(f"from {module} import {expr}\n")
+    if needed_imports:
+        _insert_imports(lines, new_tree, needed_imports)
         new_text = "".join(lines)
         try:
             ast.parse(new_text)
@@ -745,6 +782,7 @@ def audit_stub_tree(
     stub_root: Path,
     *,
     importer: Callable[[str], object] = importlib.import_module,
+    observed: dict[str, dict[str, dict]] | None = None,
 ) -> RuntimeAuditSummary:
     """Audit every generated stub under ``stub_root`` against the live runtime.
 
@@ -762,7 +800,7 @@ def audit_stub_tree(
     saved_argv = list(sys.argv)
     sys.argv = [saved_argv[0] if saved_argv else "<sage-pycharm-stubgen>"]
     try:
-        _audit_modules(stub_root, importer, summary, hierarchy)
+        _audit_modules(stub_root, importer, summary, hierarchy, observed)
     finally:
         sys.argv = saved_argv
     return summary
@@ -773,6 +811,7 @@ def _audit_modules(
     importer: Callable[[str], object],
     summary: RuntimeAuditSummary,
     hierarchy: _StubHierarchy,
+    observed: dict[str, dict[str, dict]] | None = None,
 ) -> None:
     for stub in sorted(stub_root.rglob("*.pyi")):
         module_name = stub_module_name(stub_root, stub)
@@ -795,6 +834,7 @@ def _audit_modules(
             runtime_module,
             module_name=module_name,
             hierarchy=hierarchy,
+            observed=(observed or None),
         )
         summary.methods_added += file_summary.methods_added
         summary.properties_added += file_summary.properties_added
@@ -803,6 +843,7 @@ def _audit_modules(
         summary.signatures_recovered += file_summary.signatures_recovered
         summary.inherited_skipped += file_summary.inherited_skipped
         summary.classes_resolved_deep += file_summary.classes_resolved_deep
+        summary.observed_returns += file_summary.observed_returns
         summary.classes_skipped.extend(f"{module_name}.{n}" for n in file_summary.classes_skipped)
         summary.errors.extend(f"{module_name}: {e}" for e in file_summary.errors)
         if new_text != original:

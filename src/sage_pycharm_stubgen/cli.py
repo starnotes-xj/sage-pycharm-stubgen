@@ -129,6 +129,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
+        "--no-sample",
+        action="store_true",
+        help="With --runtime-audit: skip observed-return sampling (operator dunders probed in isolated subprocess batches)",
+    )
+    parser.add_argument(
         "--no-sidecar",
         action="store_true",
         help=(
@@ -552,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
         verbose=args.verbose,
         doc_language=args.doc_language,
         runtime_audit=args.runtime_audit,
+        no_sample=args.no_sample,
     )
     print(f"SageMath: {summary.sage_version}")
     print(f"Discovered: {summary.discovered}")

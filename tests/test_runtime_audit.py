@@ -329,6 +329,29 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertEqual(summary.classes_skipped, ["Shared"])
         self.assertEqual(summary.classes_resolved_deep, 0)
 
+    def test_observed_sampling_upgrades_any_defs(self) -> None:
+        # Ctrl+Q-grade precision without curated: the sampler observed
+        # Integer * Integer -> Integer, so the stub's `-> Any` upgrades.
+        stub = (
+            "from typing import Any\n\n\n"
+            "class Integer:\n"
+            "    def __mul__(self, other) -> Any: ...\n"
+        )
+        observed = {
+            "sage.sample.Integer": {
+                "__mul__": {"expression": "Integer", "module": "sage.sample"},
+            }
+        }
+        content, summary = audit_stub_text(
+            stub, types.SimpleNamespace(), module_name="sage.sample", observed=observed
+        )
+
+        self.assertIn("def __mul__(self, other) -> Integer: ...", content)
+        self.assertNotIn("-> Any: ...", content)
+        self.assertEqual(summary.observed_returns, 1)
+        self.assertIn("from sage.sample import Integer", content)
+        compile(content, "sample.pyi", "exec")
+
     def test_nested_class_resolves_within_same_module_only(self) -> None:
         import sys as _sys
 
