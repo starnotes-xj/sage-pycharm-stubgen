@@ -606,13 +606,26 @@ def enhance_method_aliases(
                     and stmt.lineno == stmt.end_lineno
                 ):
                     continue
+                source = methods[stmt.value.id]
                 if (
                     hierarchy is not None
                     and module_name is not None
                     and hierarchy.has_callable_visible(module_name, node.name, stmt.targets[0].id)
+                    and (
+                        source.returns is None
+                        or (
+                            isinstance(source.returns, ast.Name)
+                            and source.returns.id == "Any"
+                        )
+                    )
                 ):
+                    # An ancestor already declares the name as a def.  The
+                    # promoted copy would shadow it with an annotation-less or
+                    # ``Any`` return — leave the alias assignment instead (MRO
+                    # keeps the member callable).  A PRECISE copied return is
+                    # worth promoting: it carries information the ancestor
+                    # lacks and equals the ancestor's runtime semantics.
                     continue
-                source = methods[stmt.value.id]
                 signature = ast.unparse(source.args)
                 annotation = (
                     f" -> {ast.unparse(source.returns)}" if source.returns else ""
