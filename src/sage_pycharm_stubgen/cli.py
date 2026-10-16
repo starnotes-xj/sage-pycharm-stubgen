@@ -42,7 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--include-py",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
             "Also stub pure-Python modules (*.py) — not just the compiled "
             "Cython modules (*.pyx).  Package inits, tests, dynamic "
@@ -540,6 +541,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"SageMath: {summary.sage_version}")
     print(f"Discovered: {summary.discovered}")
+    if summary.pruned_stale_files:
+        print(f"Pruned stale outputs: {summary.pruned_stale_files}")
     print(f"Generated: {summary.generated}")
     print(f"Failed: {summary.failed}")
     print(f"Output: {summary.output_root}")

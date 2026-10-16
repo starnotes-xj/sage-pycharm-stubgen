@@ -83,6 +83,7 @@ class GenerationSummary:
     docstrings: EnrichmentSummary | None = None
     failures: list[Failure] = field(default_factory=list)
     merged_duplicates: int = 0
+    pruned_stale_files: int = 0
     runtime_audit: "RuntimeAuditSummary | None" = None
     lint_errors: list[str] = field(default_factory=list)
     lint_warnings: list[str] = field(default_factory=list)
@@ -891,13 +892,29 @@ def runtime_fallback(source: Path, sage_package: Path, target: Path) -> bool:
         return False
 
 
+def _prune_stale_outputs(output_root: Path) -> int:
+    """Delete every *.pyi left in the output tree from earlier runs.
+
+    The output tree is a pure build artifact: a file that this run did not
+    regenerate is stale by definition (its module's source disappeared, or
+    discovery changed) and, worse, it re-enters every later install — the
+    reason ancient flattened stubs kept shadowing curated fixes.  Only
+    ``*.pyi`` files are ever touched.
+    """
+    pruned = 0
+    for old in sorted(output_root.rglob("*.pyi")):
+        old.unlink()
+        pruned += 1
+    return pruned
+
+
 def generate(
     output_root: Path,
     *,
     sage_package: Path | None = None,
     patterns: Iterable[str] = DEFAULT_PATTERNS,
     excludes: Iterable[str] = (),
-    include_py: bool = False,
+    include_py: bool = True,
     include_private: bool = False,
     generate_all: bool = True,
     use_runtime_docs: bool = True,
@@ -907,10 +924,11 @@ def generate(
 ) -> GenerationSummary:
     if doc_language not in {"zh", "en"}:
         raise ValueError(f"Unsupported doc language: {doc_language!r}")
-    detected_package, sage_version = detect_sage_package()
-    package = (sage_package or detected_package).resolve()
     output_root = output_root.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
+    pruned_stale = _prune_stale_outputs(output_root)
+    detected_package, sage_version = detect_sage_package()
+    package = (sage_package or detected_package).resolve()
 
     from stubgen_pyx import StubgenPyx
     from stubgen_pyx.config import StubgenPyxConfig
@@ -922,6 +940,7 @@ def generate(
         output_root=str(output_root),
         generator_commit=_generator_git_commit(),
         discovered=len(sources),
+        pruned_stale_files=pruned_stale,
     )
     def make_converter(*, include_docstrings: bool, pxd_to_stubs: bool) -> Any:
         return StubgenPyx(

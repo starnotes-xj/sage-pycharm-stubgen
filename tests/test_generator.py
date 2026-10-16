@@ -202,6 +202,25 @@ def IntegerMod(parent, value): ...
         # Non-sage target module -> keep the assignment.
         self.assertIn("to_hex = LazyImport('matplotlib.colors', 'to_hex')", content)
 
+    def test_prune_stale_outputs_removes_only_pyi(self) -> None:
+        from sage_pycharm_stubgen.generator import _prune_stale_outputs
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            deep = root / "sage" / "sub"
+            deep.mkdir(parents=True)
+            (deep / "old.pyi").write_text("class Old: ...\n", encoding="utf-8")
+            (root / "all.pyi").write_text("", encoding="utf-8")
+            keep = root / "generation-report.json"
+            keep.write_text("{}", encoding="utf-8")
+
+            pruned = _prune_stale_outputs(root)
+
+            self.assertEqual(pruned, 2)
+            self.assertFalse((deep / "old.pyi").exists())
+            self.assertFalse((root / "all.pyi").exists())
+            self.assertTrue(keep.exists())
+
     def test_method_alias_shadowing_ancestor_is_left_unpromoted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
