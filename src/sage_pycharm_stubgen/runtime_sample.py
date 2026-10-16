@@ -201,6 +201,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
+    # A poisoned class can balloon to tens of GB before hanging; cap the
+    # child's address space so the kernel OOM killer never takes the whole
+    # WSL VM down.  MemoryError from an over-eager sample is caught upstream.
+    try:
+        import resource
+
+        cap = 12 * 1024 * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (cap, cap))
+    except (ImportError, ValueError, OSError):
+        pass
     candidates = json.loads(args.candidates.read_text(encoding="utf-8"))
     results = sample_candidates(candidates, out_path=args.out)
     args.out.write_text(
