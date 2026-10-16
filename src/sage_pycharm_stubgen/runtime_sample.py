@@ -81,7 +81,7 @@ RECEIVER_RECIPES: list[tuple[str, str]] = [
 ]
 
 DYNAMIC_SUFFIX = "_with_category"
-_BATCH_SIZE = 250
+_BATCH_SIZE = 125
 
 
 def receiver_for(cls: type, globalns: dict) -> object | None:
@@ -135,13 +135,15 @@ def type_expression(value: object) -> dict | None:
 
 def sample_candidates(
     candidates: list[dict[str, str]],
-    stub_root: Path | None = None,
+    out_path: Path | None = None,
 ) -> dict[str, dict[str, dict]]:
     """In-process sampler used inside the isolated child process.
 
     ``candidates`` are ``{"module": ..., "class": ...}`` dicts.  Returns
     observations keyed ``"<module>.<Class>" -> {"<op>": {"expression": ...,
-    "module": ...}}``.
+    "module": ...}}``.  When ``out_path`` is given the results are rewritten
+    after EVERY candidate, so a segfault or timeout kill still leaves the
+    parent the partial observations of this batch.
     """
     import ast
     import importlib
@@ -185,6 +187,11 @@ def sample_candidates(
             info = type_expression(first) if type(first) is type(second) else None
             if info:
                 observed[op_name] = info
+                if out_path is not None:
+                    out_path.write_text(
+                        json.dumps(results, ensure_ascii=False, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
     return results
 
 
@@ -195,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     candidates = json.loads(args.candidates.read_text(encoding="utf-8"))
-    results = sample_candidates(candidates)
+    results = sample_candidates(candidates, out_path=args.out)
     args.out.write_text(
         json.dumps(results, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -262,22 +269,27 @@ def run_batches(
             candidates_file.write_text(
                 json.dumps(batch, ensure_ascii=False), encoding="utf-8"
             )
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "sage_pycharm_stubgen.runtime_sample",
-                    "--candidates",
-                    str(candidates_file),
-                    "--out",
-                    str(output_file),
-                ],
-                capture_output=True,
-                timeout=timeout,
-            )
-            if completed.returncode != 0:
+            try:
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "sage_pycharm_stubgen.runtime_sample",
+                        "--candidates",
+                        str(candidates_file),
+                        "--out",
+                        str(output_file),
+                    ],
+                    capture_output=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                # A poisonous class can hang the child; the child rewrites the
+                # out file after every observation, so salvage what it saw.
                 crashed.append(index)
-                continue
+            else:
+                if completed.returncode != 0:
+                    crashed.append(index)
             if output_file.is_file():
                 for key, observed in json.loads(
                     output_file.read_text(encoding="utf-8")
