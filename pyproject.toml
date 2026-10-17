@@ -37,4 +37,4 @@ sage-pycharm-stubgen = "sage_pycharm_stubgen.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-sage_pycharm_stubgen = ["translations.json"]
+sage_pycharm_stubgen = ["translations.json", "docs_zh.json"]
