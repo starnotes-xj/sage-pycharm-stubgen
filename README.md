@@ -37,7 +37,12 @@ python -m sage_pycharm_stubgen --install --runtime-audit
 `--install` also builds the Sage API index sidecar and installs it into every
 JetBrains PyCharm configuration directory found on the machine (a WSL run
 discovers the Windows-side config through `/mnt/c/Users/*`; `--sidecar-dir`
-overrides the destination, `--no-sidecar` skips this step).
+overrides the destination, `--no-sidecar` skips this step).  The sidecar's
+entry count is checked against the plugin's load cap (250k entries / 288 MB)
+at every install: from 85% the run prints a capacity warning and records it
+in `generation-report.json` (`sidecar.capacityWarning`) so pruning
+(`sanitize_release_index.py` in the plugin repo) happens before the plugin
+rejects the artifact.
 
 Then point PyCharm at that Sage interpreter (WSL SDK): completion and
 Ctrl+Q work in any project without extra Sources Roots, because the stubs
@@ -341,6 +346,28 @@ modules, inline classes whose runtime has nothing addable, and flattened
 nested helpers with no direct usage path — these keep their converted
 content and are intentionally not audited.
 
+### Observed-return sampling
+
+Precise returns for arithmetic chains come from a live sampler that runs in
+isolated subprocess batches (a poisoned compiled module costs one batch,
+never the audit): construct one receiver per class (a curated per-class
+recipe table plus generic `an_element()`/`zero()`/`one()` attempts), apply
+each operator twice, and upgrade the stub's `-> Any` only when both runs
+agree on a Sage type.  The recipe table covers the integer/rational/real
+families, number fields, polynomial/Laurent/power-series/fraction-field
+elements, p-adics, finite-field implementations, matrices, vectors,
+symbolic expressions, combinatorics and graphs.  Same-instance `a % a` is
+never attempted — it segfaults unwrapped compiled code on some matrix
+families; the scalar-side pairs are clean and yield the same information.
+
+`--sample-methods` (opt-in, off by default) extends the probe to a class's
+own public named methods, but only those whose signature has no required
+parameter beyond the bound `self` — the same double-run-stability and
+subprocess-isolation guards apply.  Named-method calls carry a real
+segfault risk the operator protocol avoids, so the tier is opt-in; on a
+38-class probe (Sage 10.9) it added 760 method returns with zero crashed
+batches.
+
 ## Conformance check
 
 The curated layer patches return types that upstream Sage does not
@@ -354,10 +381,23 @@ sage-pycharm-stubgen conformance
 For every curated return fix it reports whether the installed Sage source
 declares the same type (`ok`), disagrees (`conflict` — either the data
 layer is stale or the upstream annotation is wrong, both actionable), or
-declares nothing (`unannotated` — the patch is still needed).  `--json`
-emits one object per finding for automation.  `--runtime` additionally
-executes each entry's doctest examples against the live Sage runtime and
-reports declared types that do not fit the observed result.
+declares nothing (`unannotated` — the patch is still needed).  Equivalent
+spellings agree rather than conflict: Cython C-level names (`Py_ssize_t`)
+map to their Python builtins, and a bare generic origin upstream (`-> list`)
+is compatible with a parameterized curated fix (`list[Integer]`) — only a
+concrete parameter disagreement stays a conflict.  `--json` emits one
+object per finding for automation.  `--runtime` additionally executes each
+entry's doctest examples against the live Sage runtime and reports declared
+types that do not fit the observed result.
+
+`scripts/pyx_annotation_conformance.py` measures the upstream `.pyx`
+annotation channel end to end: every Python-visible return declared in a
+shipped `.pyx` (`def f() -> X:` and `cpdef X f()`) is checked against the
+installed stub.  On Sage 10.9 with 0.9.16 stubs the channel is intact —
+arrow-form annotations are preserved 96/96, Cython-form 477/479 (one
+equivalent `ssize_t` spelling, one deliberately un-stubbed GAP crash
+module) — so upstream `.pyx` annotations are adopted by the converter
+as-is and the matching curated entries retire as Sage ships them.
 
 ## Duplicate-declaration merge and product lint
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sage_pycharm_stubgen.sidecar import (
     build_sidecar_files,
+    capacity_warning,
     install_sidecar,
     sidecar_target_dirs,
 )
@@ -91,6 +92,24 @@ class SidecarTests(unittest.TestCase):
             sidecar_target_dirs("some/dir"),
             [Path("some/dir")],
         )
+
+
+class CapacityWarningTests(unittest.TestCase):
+    def test_below_threshold_is_silent(self) -> None:
+        # The installed 10.9 corpus (~175k entries of the 250k cap, 70%)
+        # must not warn.
+        self.assertIsNone(capacity_warning(174_859, 154 * 1024 * 1024))
+
+    def test_entry_ratio_above_threshold_warns(self) -> None:
+        warning = capacity_warning(220_000, 100 * 1024 * 1024)
+        self.assertIsNotNone(warning)
+        self.assertIn("88%", warning)
+        self.assertIn("sanitize_release_index.py", warning)
+
+    def test_byte_ratio_alone_triggers_the_warning(self) -> None:
+        warning = capacity_warning(100_000, int(0.9 * 288 * 1024 * 1024))
+        self.assertIsNotNone(warning)
+        self.assertIn("bytes", warning)
 
 
 if __name__ == "__main__":

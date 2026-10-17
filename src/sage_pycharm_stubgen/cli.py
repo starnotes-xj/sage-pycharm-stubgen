@@ -134,6 +134,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="With --runtime-audit: skip observed-return sampling (operator dunders probed in isolated subprocess batches)",
     )
     parser.add_argument(
+        "--sample-methods",
+        action="store_true",
+        help=(
+            "With --runtime-audit: the sampler also probes own-class public "
+            "methods whose signature has no required parameters (opt-in; "
+            "named-method calls can segfault compiled modules, so this runs "
+            "only inside the isolated sampler subprocesses)"
+        ),
+    )
+    parser.add_argument(
         "--no-sidecar",
         action="store_true",
         help=(
@@ -558,6 +568,7 @@ def main(argv: list[str] | None = None) -> int:
         doc_language=args.doc_language,
         runtime_audit=args.runtime_audit,
         no_sample=args.no_sample,
+        sample_methods=args.sample_methods,
     )
     print(f"SageMath: {summary.sage_version}")
     print(f"Discovered: {summary.discovered}")
@@ -637,7 +648,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Manifest: {result.manifest}")
     if args.install and not args.no_sidecar:
         try:
-            from .sidecar import build_sidecar_files, install_sidecar, sidecar_target_dirs
+            from .sidecar import (
+                SIDECAR_ENTRY_CAP,
+                build_sidecar_files,
+                capacity_warning,
+                install_sidecar,
+                sidecar_target_dirs,
+            )
 
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
             files = build_sidecar_files(
@@ -652,13 +669,33 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 written = install_sidecar(files, summary.sage_version, destinations)
-                entry_count = len(json.loads(files["sage-api-index.json"]).get("entries", []))
+                index_text = files["sage-api-index.json"]
+                entry_count = len(json.loads(index_text).get("entries", []))
                 print(
                     f"Index sidecar: installed into {len(written)} IDE config "
                     f"dir(s) for Sage {summary.sage_version} ({entry_count} entries)"
                 )
                 for path in written:
                     print(f"  sidecar: {path}")
+                warning = capacity_warning(entry_count, len(index_text.encode("utf-8")))
+                report_path = Path(summary.output_root) / "generation-report.json"
+                report: dict = {}
+                try:
+                    report = json.loads(report_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    report = {}
+                report["sidecar"] = {
+                    "entryCount": entry_count,
+                    "indexBytes": len(index_text.encode("utf-8")),
+                    "entryCap": SIDECAR_ENTRY_CAP,
+                    "capacityWarning": warning,
+                }
+                report_path.write_text(
+                    json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                if warning:
+                    print(f"WARNING: {warning}", file=sys.stderr)
         except Exception as exc:
             print(
                 f"Index sidecar: FAILED ({exc}); stubs are installed and the "

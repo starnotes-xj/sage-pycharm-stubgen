@@ -6,10 +6,51 @@ import unittest
 from pathlib import Path
 
 from sage_pycharm_stubgen.runtime_sample import (
+    RECEIVER_RECIPES,
+    SAMPLE_OPS,
+    _NO_SELF_OPERAND_OPS,
+    _needs_arguments,
     collect_candidates,
     run_batches,
     type_expression,
 )
+
+
+class NeedsArgumentsTests(unittest.TestCase):
+    def test_bound_zero_arg_methods_pass(self) -> None:
+        import inspect
+
+        def noarg(self): ...
+        def defaulted(self, algorithm=None, *, proof=False): ...
+        def variadic(self, *args, **kwargs): ...
+
+        for fn in (noarg, defaulted, variadic):
+            self.assertFalse(_needs_arguments(inspect.signature(fn)))
+
+    def test_methods_with_required_arguments_are_rejected(self) -> None:
+        import inspect
+
+        def required(self, n): ...
+        def kwonly_required(self, *, algorithm): ...
+
+        for fn in (required, kwonly_required):
+            self.assertTrue(_needs_arguments(inspect.signature(fn)))
+
+
+class RecipeTableTests(unittest.TestCase):
+    def test_recipe_names_are_unique_and_expressions_parse(self) -> None:
+        names = [name for name, _ in RECEIVER_RECIPES]
+        self.assertEqual(len(names), len(set(names)), "duplicate recipe class names")
+        for name, expression in RECEIVER_RECIPES:
+            self.assertTrue(name.isidentifier(), name)
+            compile(expression, f"<recipe {name}>", "eval")
+
+    def test_self_mod_pair_is_excluded_from_sampling(self) -> None:
+        # ``a % a`` segfaults compiled matrix code; the protocol must keep
+        # the operator itself (scalar pairs are clean) while dropping the
+        # same-instance pair.
+        self.assertIn("__mod__", SAMPLE_OPS)
+        self.assertEqual(_NO_SELF_OPERAND_OPS, {"__mod__"})
 
 
 class TypeExpressionTests(unittest.TestCase):

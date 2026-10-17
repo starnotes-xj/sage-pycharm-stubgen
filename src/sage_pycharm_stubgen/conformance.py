@@ -70,17 +70,62 @@ class ConformanceFinding:
 
 
 def normalize_annotation(text: str) -> str:
-    """Canonical rendering of an annotation so equivalent spellings compare equal."""
+    """Canonical rendering of an annotation so equivalent spellings compare equal.
+
+    Cython C-level spellings of Python types (``Py_ssize_t``, ``bint``) map
+    to their Python names; bare generic origins (``list``) are canonicalized
+    with ``Any`` parameters so they compare against parameterized forms.
+    """
+    stripped = text.strip().strip("'\"")
     try:
-        node = ast.parse(text.strip(), mode="eval").body
+        node = ast.parse(stripped, mode="eval").body
     except (SyntaxError, ValueError, RecursionError):
-        return re.sub(r"\s+", "", text.strip().strip("'\""))
+        return re.sub(r"\s+", "", stripped)
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
+        return normalize_annotation(node.value)
     try:
-        return re.sub(r"\s+", "", ast.unparse(node))
+        rendered = re.sub(r"\s+", "", ast.unparse(node))
     except (ValueError, RecursionError):
-        return re.sub(r"\s+", "", text.strip())
+        return re.sub(r"\s+", "", stripped)
+    mapped = _C_LEVEL_ALIASES.get(rendered, rendered)
+    return _BARE_GENERIC_WITH_ANY.get(mapped, mapped)
+
+
+#: Cython-only spellings whose Python meaning is the plain builtin.
+_C_LEVEL_ALIASES = {
+    "Py_ssize_t": "int",
+    "ssize_t": "int",
+    "size_t": "int",
+    "bint": "bool",
+}
+
+#: A bare generic origin declared by upstream (``-> list``) is compatible
+#: with any parameterization of the same origin — it is the same claim with
+#: less precision, not a disagreement.
+_BARE_GENERIC_WITH_ANY = {
+    origin: f"{origin}[Any]"
+    for origin in ("list", "set", "dict", "frozenset", "Sequence", "Iterable", "Iterator", "Collection")
+}
+
+
+def _declarations_match(declared: str, curated: str) -> bool:
+    """True when the source declaration and the curated fix AGREE.
+
+    Same canonical spelling, or the same generic origin with ``Any``
+    parameters on one side only: upstream's bare ``-> list`` (Cython cannot
+    spell parameters) with a curated ``list[Integer]`` is a precision
+    difference, not a disagreement.  Both sides parameterized with
+    different members (``list[str]`` vs ``list[Integer]``) still conflict.
+    """
+    left, right = normalize_annotation(declared), normalize_annotation(curated)
+    if left == right:
+        return True
+    for a, b in ((left, right), (right, left)):
+        m_a = re.fullmatch(r"(\w+)\[Any\]", a)
+        m_b = re.fullmatch(r"(\w+)\[.+\]", b)
+        if m_a and m_b and m_a.group(1) == m_b.group(1):
+            return True
+    return False
 
 
 def find_source_file(package_root: Path, module: str) -> Path | None:
@@ -151,12 +196,25 @@ def source_annotations(source: Path) -> dict[str, str]:
             indent = len(def_match.group("indent"))
             while class_stack and class_stack[-1][0] >= indent:
                 class_stack.pop()
-            name, return_type = _parse_cython_signature(def_match.group("rest"))
+            # ``cdef`` declarations are C-level only — local variables inside
+            # method bodies (``cdef Py_ssize_t row``) and C-only functions
+            # never describe the Python API, and a local whose NAME collides
+            # with a real method used to overwrite that method's annotation.
+            if def_match.group("kind") == "cdef":
+                index += 1
+                continue
+            rest = re.sub(r"^(?:inline|api|nogil)\s+", "", def_match.group("rest"))
+            head = rest.split("(", 1)[0]
+            # No ``(`` before any ``=`` → attribute/initializer, not a def.
+            if "(" not in rest or "=" in head:
+                index += 1
+                continue
+            name, return_type = _parse_cython_signature(rest)
             # Cython 3 also supports the arrow syntax on plain ``def``
             # methods (e.g. ``def f(x) -> X:``); the helper only parses the
             # Cython-style ``cpdef X f(...)`` form.
-            if return_type is None and "->" in def_match.group("rest"):
-                arrow = def_match.group("rest").rsplit("->", 1)[1].split(":", 1)[0].strip()
+            if return_type is None and "->" in rest:
+                arrow = rest.rsplit("->", 1)[1].split(":", 1)[0].strip()
                 if arrow:
                     return_type = arrow
             if name.isidentifier() and return_type:
@@ -205,7 +263,7 @@ def run_conformance(
                 continue
             status = (
                 "ok"
-                if normalize_annotation(declared) == normalize_annotation(curated_return)
+                if _declarations_match(declared, curated_return)
                 else "conflict"
             )
             findings.append(
@@ -336,7 +394,7 @@ def export_upstream_patches(
                 continue
             full = f"{module}.{qualname}"
             declared = annotations.get(qualname)
-            if declared and normalize_annotation(declared) == normalize_annotation(return_type):
+            if declared and _declarations_match(declared, return_type):
                 result.skipped_annotated.append(full)
                 continue
             if declared:  # conflict: human decision required

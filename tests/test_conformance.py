@@ -54,6 +54,34 @@ class SourceAnnotationsTests(unittest.TestCase):
                 {"typed": "str", "ctyped": "int", "Box.method": "object"},
             )
 
+    def test_pyx_local_cdef_declarations_do_not_pollute(self) -> None:
+        # Real regressions behind the 2026-10 conflict batch: a local
+        # ``cdef Py_ssize_t row`` inside a method body used to be recorded
+        # as ``Matrix.row -> Py_ssize_t``, and a local whose name collided
+        # with a real method (``cdef ZZ_c content``) OVERWROTE that
+        # method's genuine annotation.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sage" / "demo" / "matrix1.pyx"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "cdef class Matrix:\n"
+                "    cpdef Integer content(self):\n"
+                "        return Integer(1)\n"
+                "    def row(self, i, from_list=False):\n"
+                "        cdef Py_ssize_t row\n"
+                "        return row\n"
+                "    cdef int _c_only(self):\n"
+                "        return 0\n"
+                "    cpdef inline int polished(self):\n"
+                "        return 1\n",
+                encoding="utf-8",
+            )
+            annotations = source_annotations(source)
+            self.assertEqual(annotations.get("Matrix.content"), "Integer")
+            self.assertNotIn("Matrix.row", annotations)
+            self.assertNotIn("Matrix._c_only", annotations)
+            self.assertEqual(annotations.get("Matrix.polished"), "int")
+
     def test_find_source_file_prefers_py_then_pyx(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -72,6 +100,22 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(
             normalize_annotation("tuple[int, int]"), normalize_annotation(" tuple[ int , int ] ")
         )
+
+    def test_normalize_maps_c_level_spellings_and_bare_generics(self) -> None:
+        from sage_pycharm_stubgen.conformance import _declarations_match
+
+        self.assertEqual(normalize_annotation("Py_ssize_t"), "int")
+        self.assertEqual(normalize_annotation("bint"), "bool")
+        self.assertEqual(normalize_annotation("list"), "list[Any]")
+        self.assertEqual(normalize_annotation("Sequence"), "Sequence[Any]")
+        # Precision differences are agreement, not conflict...
+        self.assertTrue(_declarations_match("list", "list[Any]"))
+        self.assertTrue(_declarations_match("list", "list[Integer]"))
+        self.assertTrue(_declarations_match("Sequence", "Sequence[Any]"))
+        self.assertTrue(_declarations_match("Py_ssize_t", "int"))
+        # ...but concrete parameter disagreements still conflict.
+        self.assertFalse(_declarations_match("list[str]", "list[Integer]"))
+        self.assertFalse(_declarations_match("tuple[Any]", "list[Any]"))
 
 
 class ConformanceTests(unittest.TestCase):

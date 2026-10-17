@@ -935,6 +935,7 @@ def generate(
     doc_language: str = "zh",
     runtime_audit: bool = False,
     no_sample: bool = False,
+    sample_methods: bool = False,
 ) -> GenerationSummary:
     if doc_language not in {"zh", "en"}:
         raise ValueError(f"Unsupported doc language: {doc_language!r}")
@@ -1125,7 +1126,7 @@ def generate(
         observed: dict[str, dict[str, dict]] = {}
         crashed: list[int] = []
         if not no_sample:
-            observed, crashed = run_batches(output_root)
+            observed, crashed = run_batches(output_root, sample_methods=sample_methods)
         audit = audit_stub_tree(output_root, observed=observed or None)
         audit.sample_batches_crashed = len(crashed)
         summary.runtime_audit = audit

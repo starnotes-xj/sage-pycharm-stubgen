@@ -31,6 +31,41 @@ SIDECAR_FILES = (
     "artifact-receipt.json",
 )
 
+#: The plugin's SageApiIndexService refuses to load an index above these
+#: bounds (MAX_INDEX_ENTRIES / MAX_EXTERNAL_INDEX_BYTES, 250_000 entries /
+#: 288 MB as of plugin 1.8.29).  The installed 10.9 corpus sits at ~175k
+#: entries (70%), which grows with every Sage release, so generation alerts
+#: at 85% — leaving a real mitigation window (prune low-value entries with
+#: the plugin repo's sanitize_release_index.py) before the cap bites.
+SIDECAR_ENTRY_CAP = 250_000
+SIDECAR_INDEX_BYTES_CAP = 288 * 1024 * 1024
+SIDECAR_WARN_RATIO = 0.85
+
+
+def capacity_warning(entry_count: int, index_bytes: int) -> str | None:
+    """Warning text when the sidecar approaches the plugin's load caps.
+
+    ``None`` while both ratios stay below the warning threshold — the
+    normal path stays silent.
+    """
+    warnings: list[str] = []
+    for label, value, cap in (
+        ("entries", entry_count, SIDECAR_ENTRY_CAP),
+        ("bytes", index_bytes, SIDECAR_INDEX_BYTES_CAP),
+    ):
+        ratio = value / cap
+        if ratio >= SIDECAR_WARN_RATIO:
+            warnings.append(
+                f"index sidecar at {ratio:.0%} of the plugin {label} cap "
+                f"({value}/{cap})"
+            )
+    if not warnings:
+        return None
+    return "; ".join(warnings) + (
+        " — prune with sanitize_release_index.py (plugin repo) before the "
+        "cap rejects the sidecar"
+    )
+
 
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
