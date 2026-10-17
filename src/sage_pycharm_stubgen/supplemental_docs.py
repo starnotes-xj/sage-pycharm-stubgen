@@ -1081,7 +1081,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
     "sage.misc.functional": {
         "multiplicative_order": {
             "doc": '返回元素 x 的乘法阶：满足 x^k == 1 的最小正整数 k。\n\n参数:\n- ``x`` -- 环/群中元素，须为单位（可逆元），如 Z/nZ 的模剩余、椭圆曲线点等\n\n返回:\nInteger -- x 的乘法阶；x 不是单位时抛 ArithmeticError；x 为单位元时返回 1；无限阶元素返回 +Infinity（如数域的无限阶单位）\n\n示例::\n\n    sage: multiplicative_order(mod(5, 11))\n    5\n    sage: multiplicative_order(mod(1, 11))\n    1',
-            "return": 'Integer',
+            "return": 'Integer | PlusInfinity',
             "imports": ['from sage.rings.integer import Integer'],
         },
     },
@@ -1669,7 +1669,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
     "sage.rings.finite_rings.finite_field_constructor": {
         "GF": {
             "doc": "有限域工厂函数：创建并缓存指定阶（素数幂）的有限域。GF 与 FiniteField 是同一个工厂对象的两个名字（GF is FiniteField 为 True）。同参数调用返回同一个（缓存）对象。\n\n参数:\n- ``order`` -- 素数幂 q=p^n，或二元组 (p,n)，例如 GF(2^8)、GF((2,8))（整数）\n- ``name`` -- （可选）生成元的名字（字符串），如 'a'；缺省时触发伪 Conway 多项式计算、生成元名为 zN，构造开销更大；素数域忽略名字\n- ``names`` -- （可选）名字的元组形式，names=('a',) 与 name='a' 等价，均可配合 K.<a> = ... 解包；也接受 names='a'、names=['aa']\n- ``modulus`` -- （可选）定义多项式（必须不可约且次数等于扩张次数），或字符串算法名：'minimal_weight'（缺省）、'primitive'、'random'、'conway'、'adleman-lenstra'；指定自定义 modulus 时必须同时指定名字\n- ``implementation`` -- （可选）'modn'（仅素数域）、'givaro'（Zech 对数，默认，阶 <= 65521）、'ntl'（仅特征 2，GF(2^n) n>=16 默认）、'pari'/'pari_ffelt'（扩展域）\n- ``repr``/``elem_cache``/``check_irreducible``/``proof`` -- （可选）repr 与 elem_cache 仅 givaro 有效；check_irreducible 控制是否检验 modulus 不可约；proof 控制素性证明\n\n返回:\nFiniteField -- 满足条件的有限域对象；同参数结果被缓存（is 相等）。AES 场景必须显式指定不可约多项式 x^8+x^4+x^3+x+1，因为默认 Conway 多项式是 x^8+x^4+x^3+x^2+1，二者的乘法表不同。\n\n示例::\n\n    sage: x = polygen(GF(2))\n    sage: GF(2^8, modulus=x^8+x^4+x^3+x+1, names=('a',))\n    Finite Field in a of size 2^8\n    sage: GF(7)\n    Finite Field of size 7\n    sage: GF is FiniteField\n    True",
-            "return": '_FieldBase',
+            "return": 'FiniteField_base',
             "declare": "def GF(*args: Any, **kwargs: Any) -> _FieldBase",
             "imports": [
                 'from typing import Any',
