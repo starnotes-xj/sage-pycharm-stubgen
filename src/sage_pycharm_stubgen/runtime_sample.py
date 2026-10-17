@@ -59,13 +59,14 @@ RECEIVER_RECIPES: list[tuple[str, str]] = [
     ("Rational", "cls(22, 7)"),
     ("RealNumber", "cls('1.5')"),
     ("ComplexNumber", "cls(1, 2)"),
+    ("EllipticCurvePoint", "EllipticCurve(GF(11), [1, 1]).random_point()"),
     ("EllipticCurvePoint_finite_field", "EllipticCurve(GF(11), [1, 1]).random_point()"),
     ("EllipticCurvePoint_field", "EllipticCurve(GF(11), [1, 1]).random_point()"),
     ("ProjectiveSpace_point_finite_field", "ProjectiveSpace(GF(11), 2).point([2, 1])"),
     ("FiniteFieldElement", "GF(11).an_element()"),
     ("FiniteField_givaroElement", "GF(3**3, 'a', impl='givaro').an_element()"),
     ("FiniteField_ntl_gf2eElement", "GF(2**6, 'a', impl='ntl').an_element()"),
-    ("FiniteField_pari_ffeltElement", "GF(11).an_element()"),
+    ("FiniteFieldElement_pari_ffelt", "GF(2**4, 'a', impl='pari_ffelt').an_element()"),
     ("Polynomial_rational_flint", "PolynomialRing(QQ, 'x').gen()"),
     ("Polynomial_generic_dense", "PolynomialRing(QQ, 'x').gen()"),
     ("MPolynomial_ring_libsingular", "PolynomialRing(GF(11), 2, 'x').gens()[0]"),
@@ -85,9 +86,17 @@ _BATCH_SIZE = 125
 
 
 def receiver_for(cls: type, globalns: dict) -> object | None:
-    """Construct a receiver whose runtime type matches ``cls``."""
+    """Construct a receiver whose runtime type matches (or subclasses) ``cls``.
+
+    Subclass instances are valid receivers: operator dunders are inherited,
+    so an ``EllipticCurvePoint_finite_field`` instance exercises the base
+    ``EllipticCurvePoint_field`` operator declarations.
+    """
+    matches = lambda obj: isinstance(obj, cls) or type(obj).__name__ in (
+        cls.__name__,
+        cls.__name__ + DYNAMIC_SUFFIX,
+    )
     expected = cls.__name__
-    matches = lambda obj: type(obj).__name__ in (expected, expected + DYNAMIC_SUFFIX)
     for target_name, expression in RECEIVER_RECIPES:
         if target_name != expected:
             continue
@@ -169,15 +178,31 @@ def sample_candidates(
             continue
         key = f"{module_name}.{class_name}"
         observed = results.setdefault(key, {})
+        scalar = 6
         for op_name, apply in SAMPLE_OPS.items():
-            try:
-                first = apply(receiver, receiver)
-                second = apply(receiver, receiver)
-            except Exception:
-                continue
-            info = type_expression(first) if type(first) is type(second) else None
+            # Operand variants: same-instance first, then a small scalar on
+            # either side (point * 5 / 5 * point arithmetic — point * point
+            # is a TypeError for most Sage structures).  The first
+            # double-run-stable observation wins for this operator.
+            operand_pairs = [(receiver, receiver), (receiver, scalar), (scalar, receiver)]
+            info = None
+            for left, right in operand_pairs:
+                try:
+                    first = apply(left, right)
+                    second = apply(left, right)
+                except Exception:
+                    continue
+                if type(first) is type(second):
+                    info = type_expression(first)
+                    if info:
+                        break
             if info:
                 observed[op_name] = info
+                if out_path is not None:
+                    out_path.write_text(
+                        json.dumps(results, ensure_ascii=False, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
         for op_name, apply in SAMPLE_UNARY_OPS.items():
             try:
                 first = apply(receiver)

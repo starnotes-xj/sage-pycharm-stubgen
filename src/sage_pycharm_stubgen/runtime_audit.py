@@ -709,12 +709,14 @@ def audit_stub_text(
                         continue
                     if isinstance(stmt.returns, ast.Name):
                         line_replacements.append((stmt.lineno, "-> Any", f"-> {expr}"))
-                    elif stmt.end_lineno == stmt.lineno:
-                        # single-line def without a return annotation: insert
-                        # before the signature's closing `):`
-                        line_replacements.append((stmt.lineno, "):", f") -> {expr}:"))
                     else:
-                        continue
+                        # No return annotation: the signature closes with `):`
+                        # on the line just above the first body statement —
+                        # except single-line defs (``def f(): ...``) where the
+                        # body shares the def's own line.
+                        first_body_line = stmt.body[0].lineno if stmt.body else stmt.lineno
+                        sig_end = max(stmt.lineno, first_body_line - 1)
+                        line_replacements.append((sig_end, "):", f") -> {expr}:"))
                     module_of_type = str(class_observed[stmt.name].get("module") or "")
                     if module_of_type:
                         used_observed_imports.add((expr, module_of_type))
@@ -759,7 +761,13 @@ def audit_stub_text(
     # and keep the (pre-computed) insertion indexes valid.
     for lineno, old, new in line_replacements:
         target = lines[lineno - 1]
-        if old in target:
+        if old == "):":
+            # signature close: anchor at the LAST `):` — default values can
+            # contain earlier parentheses (e.g. ``def f(x=(1, 2)):``)
+            marker = target.rfind(old)
+            if marker >= 0:
+                lines[lineno - 1] = target[:marker] + new + target[marker + len(old) :]
+        elif old in target:
             lines[lineno - 1] = target.replace(old, new, 1)
     for insert_at, new_lines in sorted(edits, key=lambda e: e[0], reverse=True):
         lines[insert_at:insert_at] = [line if line.endswith("\n") else line + "\n" for line in new_lines]
