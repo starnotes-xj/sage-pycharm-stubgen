@@ -58,6 +58,8 @@ class RuntimeAuditSummary:
     signatures_recovered: int = 0
     classes_expanded: int = 0
     observed_returns: int = 0
+    observed_deferred_applied: int = 0
+    observed_deferred_skipped: int = 0
     sample_batches_crashed: int = 0
     inherited_skipped: int = 0
     classes_resolved_deep: int = 0
@@ -654,6 +656,25 @@ def _expand_inline_classes(
     return "\n".join(lines) + "\n", expanded
 
 
+def _observed_replacement(stmt: ast.FunctionDef, expr: str) -> tuple[int, str, str] | None:
+    """Line edit that types ``stmt``'s return with the observed ``expr``.
+
+    Applies only to the upgradeable shapes — ``-> Any`` and unannotated —
+    so a precise existing return is never overwritten.  Returns
+    ``(lineno, old, new)`` for the caller's replacement machinery.
+    """
+    if isinstance(stmt.returns, ast.Name) and stmt.returns.id == "Any":
+        return (stmt.lineno, "-> Any", f"-> {expr}")
+    if stmt.returns is None:
+        # No return annotation: the signature closes with `):` on the line
+        # just above the first body statement — except single-line defs
+        # (``def f(): ...``) where the body shares the def's own line.
+        first_body_line = stmt.body[0].lineno if stmt.body else stmt.lineno
+        sig_end = max(stmt.lineno, first_body_line - 1)
+        return (sig_end, "):", f") -> {expr}:")
+    return None
+
+
 def audit_stub_text(
     stub_text: str,
     runtime_module: object,
@@ -661,6 +682,7 @@ def audit_stub_text(
     module_name: str = "",
     hierarchy: _StubHierarchy | None = None,
     observed: dict[str, dict[str, dict]] | None = None,
+    deferred_observed: dict[tuple[str, str, str], dict] | None = None,
 ) -> tuple[str, RuntimeAuditSummary]:
     """Append missing public runtime members to every class in one stub.
 
@@ -691,42 +713,51 @@ def audit_stub_text(
         # double-run-stable type recorded by the sampler subprocess.  The
         # observed evidence came from the live runtime, so it applies
         # regardless of whether the audit itself re-resolves the class.
+        upgraded_names: set[str] = set()
         if class_observed:
             for stmt in node.body:
                 if (
                     isinstance(stmt, ast.FunctionDef)
                     and not stmt.decorator_list
                     and stmt.name in class_observed
-                    and (
-                        # annotated-but-unknown (`-> Any`)
-                        (isinstance(stmt.returns, ast.Name) and stmt.returns.id == "Any")
-                        # pure-Python conversions carry no return annotation
-                        or stmt.returns is None
-                    )
                 ):
                     expr = str(class_observed[stmt.name].get("expression") or "")
                     if not re.fullmatch(r"[A-Za-z_]\w*", expr):
                         continue
-                    if isinstance(stmt.returns, ast.Name):
-                        line_replacements.append((stmt.lineno, "-> Any", f"-> {expr}"))
-                    else:
-                        # No return annotation: the signature closes with `):`
-                        # on the line just above the first body statement —
-                        # except single-line defs (``def f(): ...``) where the
-                        # body shares the def's own line.
-                        first_body_line = stmt.body[0].lineno if stmt.body else stmt.lineno
-                        sig_end = max(stmt.lineno, first_body_line - 1)
-                        line_replacements.append((sig_end, "):", f") -> {expr}:"))
+                    replacement = _observed_replacement(stmt, expr)
+                    if replacement is None:
+                        continue
+                    line_replacements.append(replacement)
                     module_of_type = str(class_observed[stmt.name].get("module") or "")
                     if module_of_type:
                         used_observed_imports.add((expr, module_of_type))
                     summary.observed_returns += 1
+                    upgraded_names.add(stmt.name)
         runtime_cls, resolution = _resolve_runtime_class(runtime_module, module_name, node.name)
         if runtime_cls is None:
             summary.classes_skipped.append(node.name)
             continue
         if resolution == "deep":
             summary.classes_resolved_deep += 1
+        # Observed members this class's own body does not declare attribute to
+        # the runtime DEFINING class (operator dunders are inherited — a
+        # subclass receiver exercises the base declaration).  The collected
+        # upgrades are applied to the defining class's stub after the whole
+        # tree pass (targets can live in other files).
+        if class_observed and deferred_observed is not None:
+            for name, info in class_observed.items():
+                if name in upgraded_names or name in declared:
+                    continue
+                defining = next(
+                    (c for c in runtime_cls.__mro__ if name in vars(c)), None
+                )
+                if defining is None or defining is runtime_cls:
+                    # dynamic attribute, or the class's own runtime override
+                    # (the additions pass below declares it when reachable)
+                    continue
+                deferred_observed[
+                    (defining.__module__, defining.__name__, name)
+                ] = info
         new_lines: list[str] = []
         for name in sorted(n for n in dir(runtime_cls) if not n.startswith("_")):
             if name in declared:
@@ -740,6 +771,19 @@ def audit_stub_text(
                 continue
             if kind == "method":
                 summary.methods_added += 1
+                # A freshly appended member with observed evidence carries the
+                # observed return instead of the generic ``-> Any``.
+                observed_info = class_observed.get(name)
+                if observed_info:
+                    expr = str(observed_info.get("expression") or "")
+                    if re.fullmatch(r"[A-Za-z_]\w*", expr):
+                        typed = [line.replace("-> Any: ...", f"-> {expr}: ...") for line in lines]
+                        if typed != lines and sum("-> Any: ..." in line for line in lines) == 1:
+                            lines = typed
+                            module_of_type = str(observed_info.get("module") or "")
+                            if module_of_type:
+                                used_observed_imports.add((expr, module_of_type))
+                            summary.observed_returns += 1
             elif kind == "property":
                 summary.properties_added += 1
             else:
@@ -798,6 +842,104 @@ def audit_stub_text(
     return new_text, summary
 
 
+def _apply_deferred_observed(
+    stub_root: Path,
+    deferred: dict[tuple[str, str, str], dict],
+    summary: RuntimeAuditSummary,
+) -> None:
+    """Apply MRO-attributed observed returns to the defining class's stub.
+
+    ``deferred`` maps ``(module, class, member)`` to the sampler observation
+    collected while auditing a SUBCLASS receiver (the operator lives on the
+    defining class).  Targets live in arbitrary files, so this runs after
+    the whole per-file pass.  Fail-closed per file: a re-parse failure
+    reverts that file's edit.
+    """
+    if not deferred:
+        return
+    by_target: dict[tuple[str, str], dict[str, dict]] = {}
+    for (module, cls, name), info in deferred.items():
+        by_target.setdefault((module, cls), {})[name] = info
+
+    for (module, cls), members in sorted(by_target.items()):
+        module_path = Path(*module.split("."))
+        stub = next(
+            (
+                candidate
+                for candidate in (
+                    stub_root / module_path.with_suffix(".pyi"),
+                    stub_root / module_path / "__init__.pyi",
+                )
+                if candidate.is_file()
+            ),
+            None,
+        )
+        if stub is None:
+            summary.observed_deferred_skipped += len(members)
+            continue
+        text = stub.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            summary.observed_deferred_skipped += len(members)
+            continue
+        replacements: list[tuple[int, str, str]] = []
+        imports: set[tuple[str, str]] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or node.name != cls:
+                continue
+            for stmt in node.body:
+                if (
+                    not isinstance(stmt, ast.FunctionDef)
+                    or stmt.decorator_list
+                    or stmt.name not in members
+                ):
+                    continue
+                info = members[stmt.name]
+                expr = str(info.get("expression") or "")
+                if not re.fullmatch(r"[A-Za-z_]\w*", expr):
+                    continue
+                replacement = _observed_replacement(stmt, expr)
+                if replacement is None:
+                    continue
+                replacements.append(replacement)
+                module_of_type = str(info.get("module") or "")
+                if module_of_type:
+                    imports.add((expr, module_of_type))
+                summary.observed_returns += 1
+                summary.observed_deferred_applied += 1
+            break
+        if not replacements:
+            continue
+        lines = text.splitlines(keepends=True)
+        for lineno, old, new in replacements:
+            target = lines[lineno - 1]
+            marker = target.rfind(old) if old == "):" else target.find(old)
+            if marker >= 0:
+                lines[lineno - 1] = target[:marker] + new + target[marker + len(old) :]
+        new_text = "".join(lines)
+        try:
+            new_tree = ast.parse(new_text)
+            compile(new_text, str(stub), "exec")
+        except (SyntaxError, ValueError) as exc:
+            summary.errors.append(f"{module}: deferred revert: {exc}")
+            summary.observed_returns -= len(replacements)
+            summary.observed_deferred_applied -= len(replacements)
+            continue
+        needed_imports = [f"from {m} import {e}\n" for e, m in sorted(imports)]
+        if needed_imports:
+            _insert_imports(lines, new_tree, needed_imports)
+            new_text = "".join(lines)
+            try:
+                ast.parse(new_text)
+                compile(new_text, str(stub), "exec")
+            except (SyntaxError, ValueError) as exc:
+                summary.errors.append(f"{module}: deferred import revert: {exc}")
+                continue
+        stub.write_text(new_text, encoding="utf-8")
+        summary.files_touched += 1
+
+
 def audit_stub_tree(
     stub_root: Path,
     *,
@@ -820,7 +962,9 @@ def audit_stub_tree(
     saved_argv = list(sys.argv)
     sys.argv = [saved_argv[0] if saved_argv else "<sage-pycharm-stubgen>"]
     try:
-        _audit_modules(stub_root, importer, summary, hierarchy, observed)
+        deferred: dict[tuple[str, str, str], dict] = {}
+        _audit_modules(stub_root, importer, summary, hierarchy, observed, deferred)
+        _apply_deferred_observed(stub_root, deferred, summary)
     finally:
         sys.argv = saved_argv
     return summary
@@ -832,6 +976,7 @@ def _audit_modules(
     summary: RuntimeAuditSummary,
     hierarchy: _StubHierarchy,
     observed: dict[str, dict[str, dict]] | None = None,
+    deferred_observed: dict[tuple[str, str, str], dict] | None = None,
 ) -> None:
     for stub in sorted(stub_root.rglob("*.pyi")):
         module_name = stub_module_name(stub_root, stub)
@@ -855,6 +1000,7 @@ def _audit_modules(
             module_name=module_name,
             hierarchy=hierarchy,
             observed=(observed or None),
+            deferred_observed=deferred_observed,
         )
         summary.methods_added += file_summary.methods_added
         summary.properties_added += file_summary.properties_added

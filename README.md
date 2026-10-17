@@ -366,8 +366,13 @@ only those whose signature has no required parameter beyond the bound
 ``self`` — the same double-run-stability and subprocess-isolation guards
 apply, and a crashed batch is retried in halves so the classes after the
 poison still get sampled.  On the full Sage 10.9 corpus the tier measured
-3007 observations, 1447 of them upgrading an `-> Any` / unannotated stub
-def in the integrated regen (16x the operator-only yield).  Batches run
+3007 observations; after the own-body upgrades, the audit attributes the
+remaining subclass observations to the runtime DEFINING class (operator
+dunders are inherited) and upgrades that class's declaration, and freshly
+appended members carry the observed return instead of `-> Any` — 1542
+observed returns land in the integrated regen (was 89 before the tier).
+The residual observations find their target already precisely declared:
+they serve as cross-validation, not lost yield.  Batches run
 four children in parallel and observations are cached in
 ``observed-cache.json`` (keyed by the Sage and stubgen versions — a
 repeat regen of an unchanged stack skips sampling entirely; delete the

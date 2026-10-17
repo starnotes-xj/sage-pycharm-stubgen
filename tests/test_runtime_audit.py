@@ -473,5 +473,82 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertEqual(seen, [[saved[0]]])
 
 
+class ObservedAttributionTests(unittest.TestCase):
+    def test_subclass_observation_upgrades_defining_class_stub(self) -> None:
+        # A subclass receiver exercises an inherited operator; the observed
+        # return belongs on the DEFINING class's declaration.
+        def base_mul(self, other):
+            return other
+
+        Base = type("Base", (), {"__mul__": base_mul, "__module__": "sage.demo.base"})
+        Child = type("Child", (Base,), {"__module__": "sage.demo.child"})
+        base_module = types.ModuleType("sage.demo.base")
+        base_module.Base = Base
+        child_module = types.ModuleType("sage.demo.child")
+        child_module.Child = Child
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            demo = root / "sage" / "demo"
+            demo.mkdir(parents=True)
+            (demo / "base.pyi").write_text(
+                "from typing import Any\n\n\nclass Base:\n"
+                "    def __mul__(self, other) -> Any: ...\n",
+                encoding="utf-8",
+            )
+            (demo / "child.pyi").write_text(
+                "from sage.demo.base import Base\n\n\nclass Child(Base):\n    pass\n",
+                encoding="utf-8",
+            )
+            (demo / "__init__.pyi").write_text("", encoding="utf-8")
+
+            def importer(name: str):
+                if name == "sage.demo.base":
+                    return base_module
+                if name == "sage.demo.child":
+                    return child_module
+                raise ImportError(name)
+
+            observed = {
+                "sage.demo.child.Child": {
+                    "__mul__": {"expression": "Widget", "module": "sage.demo.widget"}
+                }
+            }
+            summary = audit_stub_tree(root, importer=importer, observed=observed)
+
+            rewritten = (demo / "base.pyi").read_text(encoding="utf-8")
+            self.assertIn("def __mul__(self, other) -> Widget: ...", rewritten)
+            self.assertIn("from sage.demo.widget import Widget", rewritten)
+            self.assertEqual(summary.observed_deferred_applied, 1)
+            self.assertEqual(summary.observed_deferred_skipped, 0)
+            compile(rewritten, "base.pyi", "exec")
+
+    def test_added_member_carries_observed_type_instead_of_any(self) -> None:
+        class Thing:
+            def value(self):
+                return 1
+
+        Thing.__module__ = "sage.demo.typed"
+        stub = "from typing import Any\n\n\nclass Thing:\n    def known(self) -> Any: ...\n"
+        observed = {
+            "sage.demo.typed.Thing": {
+                "value": {"expression": "Widget", "module": "sage.demo.widget"}
+            }
+        }
+        content, summary = audit_stub_text(
+            stub,
+            _runtime(Thing=Thing),
+            module_name="sage.demo.typed",
+            observed=observed,
+        )
+
+        self.assertIn("def value(self) -> Widget: ...", content)
+        self.assertIn("from sage.demo.widget import Widget", content)
+        # the unobserved member keeps its Any
+        self.assertIn("def known(self) -> Any: ...", content)
+        self.assertEqual(summary.observed_returns, 1)
+        compile(content, "thing.pyi", "exec")
+
+
 if __name__ == "__main__":
     unittest.main()
