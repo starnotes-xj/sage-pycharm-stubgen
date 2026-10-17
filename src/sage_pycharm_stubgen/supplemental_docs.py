@@ -10,7 +10,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
     "sage.arith.misc": {
         "CRT_list": {
             "doc": '对多个同余式 x ≡ values[i] (mod moduli[i]) 求联立解（模数不要求互素，但需保证有解）。\n\n参数（两种形式）:\n- ``values`` -- 剩余列表；与 ``moduli`` 等长\n- ``moduli`` -- 模数列表；也可以省略该参数，只把模剩余元素列表（如 [mod(2,3), mod(3,5), mod(2,7)]）传给 values\n\n返回:\nInteger -- 同时满足所有同余式的最小非负解（整数输入时）；单参数形式返回模 lcm 的模剩余元素（Ring of integers modulo N 中）；无解、参数非列表或长度不匹配时抛 ValueError\n\n示例::\n\n    sage: CRT_list([2, 3, 2], [3, 5, 7])\n    23\n    sage: CRT_list([mod(2, 3), mod(3, 5), mod(2, 7)])\n    23',
-            "return": 'Integer',
+            "return": 'Integer | int',
             "imports": ['from sage.rings.integer import Integer'],
         },
         "Euler_Phi": {
@@ -1799,7 +1799,7 @@ SUPPLEMENTAL_DOCS: dict[str, dict[str, dict]] = {
     "sage.rings.finite_rings.integer_mod_ring": {
         "IntegerModRing": {
             "doc": '返回环 Z/nZ（整数模 n 剩余类环）。Zmod、Integers、IntegerModRing 是同一个工厂对象的三个别名（定义在 integer_mod_ring.py 中，Integers 与 sage.rings.integer_ring 中的整数环 ZZ 不同）。\n\n参数:\n- ``order`` -- 整数（默认 0）；负数取绝对值；order = 0 时返回整数环 ZZ（此时 Integers() is ZZ 为 True）\n- ``is_field`` -- 布尔（默认 False）；声明 order 为素数、该环属于域范畴（会就地修改缓存中对象，误用后果严重，慎用）\n- ``category`` -- （可选）范畴\n\n返回:\nIntegerModRing_generic -- Z/nZ 剩余类环（单个环对象）；order = 0 时返回 ZZ\n\n示例::\n\n    sage: Zmod(7)\n    Ring of integers modulo 7\n    sage: Integers(18)\n    Ring of integers modulo 18\n    sage: Integers() is Integers(0) is ZZ\n    True',
-            "return": 'IntegerModRing_generic',
+            "return": 'IntegerModRing_generic | integer_ring.IntegerRing_class',
             "imports": ['from sage.rings.finite_rings.integer_mod_ring import IntegerModRing_generic'],
         },
     },

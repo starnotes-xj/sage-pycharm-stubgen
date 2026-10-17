@@ -483,3 +483,132 @@ class ExportPyiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PerceptionTests(unittest.TestCase):
+    """Upstream-coverage perception: overload stacks, .pyi siblings, factories."""
+
+    def _tree(self, tmp: str):
+        root = Path(tmp) / "sage"
+        pkg = root / "demo"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("", encoding="utf-8")
+        return root, pkg
+
+    def test_overload_stack_contributes_each_variant(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _, pkg = self._tree(tmp)
+            source = pkg / "mod.py"
+            source.write_text(
+                "from typing import overload\n"
+                "\n"
+                "@overload\n"
+                "def poly(a: int, b: int) -> int: ...\n"
+                "@overload\n"
+                "def poly(a: object, b: object) -> tuple: ...\n"
+                "def poly(a, b):\n"
+                "    return a + b\n",
+                encoding="utf-8",
+            )
+            from sage_pycharm_stubgen.conformance import python_annotation_variants
+
+            variants = python_annotation_variants(source)["poly"]
+            self.assertIn(("int", "source-overload"), variants)
+            self.assertIn(("tuple", "source-overload"), variants)
+
+    def test_pyi_sibling_resolves_pyx_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, pkg = self._tree(tmp)
+            (pkg / "compiled.pyx").write_text(
+                "def order(self):\n    return 5\n", encoding="utf-8"
+            )
+            (pkg / "compiled.pyi").write_text(
+                "class Thing:\n    def order(self) -> int: ...\n", encoding="utf-8"
+            )
+            from sage_pycharm_stubgen.conformance import resolve_declaration
+
+            variants = resolve_declaration(
+                "sage.demo.compiled", "Thing.order", root
+            )
+            self.assertEqual(variants, [("int", "pyi")])
+
+    def test_pyi_root_previews_open_pr_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, pkg = self._tree(tmp)
+            (pkg / "compiled.pyx").write_text(
+                "def gcd(self, right):\n    pass\n", encoding="utf-8"
+            )
+            extra = Path(tmp) / "checkout" / "sage" / "demo"
+            extra.mkdir(parents=True)
+            (extra / "compiled.pyi").write_text(
+                "class Thing:\n    def gcd(self, right) -> int: ...\n",
+                encoding="utf-8",
+            )
+            from sage_pycharm_stubgen.conformance import resolve_declaration
+
+            variants = resolve_declaration(
+                "sage.demo.compiled", "Thing.gcd", root, [extra.parents[1]]
+            )
+            self.assertEqual(variants, [("int", "pyi")])
+
+    def test_factory_instance_call_class_annotation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _, pkg = self._tree(tmp)
+            source = pkg / "mod.py"
+            source.write_text(
+                "from typing import Callable\n"
+                "\n"
+                "class Factory:\n"
+                "    __call__: Callable[..., int]\n"
+                "\n"
+                "GF = Factory()\n",
+                encoding="utf-8",
+            )
+            from sage_pycharm_stubgen.conformance import python_annotation_variants
+
+            variants = python_annotation_variants(source)["GF"]
+            self.assertEqual(variants, [("int", "source-factory")])
+
+    def test_run_conformance_reports_origin_and_prune_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, pkg = self._tree(tmp)
+            (pkg / "mod.py").write_text(
+                "from typing import Callable, overload\n"
+                "\n"
+                "class Factory:\n"
+                "    __call__: Callable[..., int]\n"
+                "\n"
+                "GF = Factory()\n"
+                "\n"
+                "@overload\n"
+                "def poly(a: int, b: int) -> int: ...\n"
+                "def poly(a, b):\n"
+                "    return a + b\n"
+                "\n"
+                "def untouched(x):\n"
+                "    return x\n",
+                encoding="utf-8",
+            )
+            curated = {
+                "sage.demo.mod": {
+                    "GF": {"return": "int"},
+                    "poly": {"return": "int"},
+                    "untouched": {"return": "int"},
+                }
+            }
+            findings = {f.qualname: f for f in run_conformance(root, curated)}
+            self.assertEqual(findings["GF"].status, "ok")
+            self.assertEqual(findings["GF"].origin, "source-factory")
+            self.assertEqual(findings["poly"].status, "ok")
+            self.assertEqual(findings["poly"].origin, "source-overload")
+            self.assertEqual(findings["untouched"].status, "unannotated")
+            self.assertIsNone(findings["untouched"].origin)
+
+            from sage_pycharm_stubgen.conformance import prune_candidates
+
+            candidates = prune_candidates(list(findings.values()))
+            names = sorted(c["qualname"] for c in candidates)
+            self.assertEqual(names, ["GF", "poly"])
+            by_name = {c["qualname"]: c for c in candidates}
+            self.assertEqual(by_name["GF"]["origin"], "source-factory")
+            self.assertEqual(by_name["poly"]["matched_declaration"], "int")

@@ -253,6 +253,33 @@ def build_parser() -> argparse.ArgumentParser:
             "and private members. PR review material; never applied in place"
         ),
     )
+    conformance_parser.add_argument(
+        "--pyi-root",
+        type=Path,
+        action="append",
+        metavar="DIR",
+        help=(
+            "Additional tree searched for .pyi stubs next to the module's "
+            "source (e.g. a sagemath/sage develop checkout's src/sage). "
+            "Lets conformance see declarations from open upstream PRs and "
+            "preview the post-merge coverage state; repeatable"
+        ),
+    )
+    conformance_parser.add_argument(
+        "--prune",
+        type=Path,
+        nargs="?",
+        const=Path("prune-candidates.json"),
+        metavar="FILE",
+        help=(
+            "Write the pruning candidate list for the curated return layer: "
+            "every entry whose upstream declaration now matches (source def, "
+            "@overload variant, sibling .pyi stub, or a factory-instance "
+            "__call__ class annotation). Review the JSON, then delete the "
+            "entries from supplemental_docs manually — deletion is never "
+            "automatic. Combine with --pyi-root to preview open PRs"
+        ),
+    )
     verify_parser = subparsers.add_parser(
         "verify",
         help=(
@@ -387,10 +414,35 @@ def run_conformance_cmd(args: argparse.Namespace) -> int:
     if source_root is None:
         source_root, _ = detect_sage_package()
 
-    findings = run_conformance(source_root)
+    pyi_roots = list(getattr(args, "pyi_root", None) or [])
+    findings = run_conformance(source_root, extra_roots=pyi_roots)
     counts = {"unannotated": 0, "ok": 0, "conflict": 0}
     for finding in findings:
         counts[finding.status] += 1
+
+    prune_file = getattr(args, "prune", None)
+    if prune_file is not None:
+        import json as _json
+
+        from .conformance import prune_candidates
+
+        candidates = prune_candidates(findings)
+        by_origin: dict[str, int] = {}
+        for candidate in candidates:
+            origin = candidate["origin"] or "?"
+            by_origin[origin] = by_origin.get(origin, 0) + 1
+        prune_file.write_text(
+            _json.dumps(candidates, ensure_ascii=False, indent=1) + "\n",
+            encoding="utf-8",
+        )
+        print(f"Prune candidates written: {len(candidates)} -> {prune_file}")
+        for origin in sorted(by_origin):
+            print(f"  {by_origin[origin]:4d} via {origin}")
+        print(
+            "Review the list, then delete those entries from "
+            "supplemental_docs manually — deletion is never automatic."
+        )
+        return 0
 
     runtime_findings = run_runtime_checks(source_root) if args.runtime else []
     runtime_counts = {"ok": 0, "mismatch": 0, "skipped": 0}

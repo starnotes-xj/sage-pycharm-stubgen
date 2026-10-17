@@ -58,6 +58,7 @@ class ConformanceFinding:
     status: str  # "ok" | "conflict" | "unannotated"
     curated: str
     annotation: str | None = None
+    origin: str | None = None  # "source" | "pyi" | "overload" | "factory" | None
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -66,6 +67,7 @@ class ConformanceFinding:
             "status": self.status,
             "curated": self.curated,
             "annotation": self.annotation,
+            "origin": self.origin,
         }
 
 
@@ -88,7 +90,17 @@ def normalize_annotation(text: str) -> str:
     except (ValueError, RecursionError):
         return re.sub(r"\s+", "", stripped)
     mapped = _C_LEVEL_ALIASES.get(rendered, rendered)
-    return _BARE_GENERIC_WITH_ANY.get(mapped, mapped)
+    mapped = _BARE_GENERIC_WITH_ANY.get(mapped, mapped)
+    # Module-qualified spellings of the same type (``numpy.ndarray`` in
+    # curated vs ``ndarray`` in a stub that imports it; ``builtins.list``
+    # qualifying a shadowed name — sometimes applied twice) never
+    # distinguish declarations, so strip repeatedly until stable.
+    previous = None
+    while previous != mapped:
+        previous = mapped
+        mapped = re.sub(r"\bbuiltins\.(\w+)", r"\1", mapped)
+        mapped = re.sub(r"\bnumpy\.(\w+)", r"\1", mapped)
+    return mapped
 
 
 #: Cython-only spellings whose Python meaning is the plain builtin.
@@ -239,38 +251,367 @@ def count_source_annotations(package_root: Path) -> int:
     return total
 
 
+# ---------------------------------------------------------------------------
+# Upstream-coverage perception: overload stacks, sibling .pyi stubs, and
+# factory-instance ``__call__`` class annotations.  Each produces
+# ``qualname -> [(annotation, origin)]`` variants; a curated entry counts as
+# covered when ANY variant matches (an overload's typed path is exactly how
+# the polymorphic helpers were upstreamed).
+# ---------------------------------------------------------------------------
+
+def _is_overload(node: ast.FunctionDef) -> bool:
+    for dec in node.decorator_list:
+        target = dec.func if isinstance(dec, ast.Call) else dec
+        if isinstance(target, ast.Name) and target.id == "overload":
+            return True
+        if isinstance(target, ast.Attribute) and target.attr == "overload":
+            return True
+    return False
+
+
+def _callable_return(annotation: ast.expr) -> str | None:
+    """The ``X`` in a ``Callable[..., X]`` annotation, if that is the shape."""
+    if isinstance(annotation, ast.Subscript):
+        value = annotation.value
+        name = value.id if isinstance(value, ast.Name) else (
+            value.attr if isinstance(value, ast.Attribute) else None)
+        if name == "Callable":
+            args = annotation.slice
+            elts = args.elts if isinstance(args, ast.Tuple) else [args]
+            if len(elts) == 2:
+                try:
+                    return ast.unparse(elts[1])
+                except Exception:
+                    return None
+    return None
+
+
+def python_annotation_variants(
+    source: Path, origin_prefix: str = "source"
+) -> dict[str, list[tuple[str, str]]]:
+    """``qualname -> [(annotation, origin)]`` for an ast-parseable file.
+
+    Handles plain ``def`` returns, ``@overload`` stacks (each overload stub
+    contributes its own variant, origin ``<prefix>-overload``), and the
+    factory pattern: a module-level ``name = SomeClass(...)`` whose class
+    declares a class-level ``__call__: Callable[..., X]`` contributes the
+    ``X`` variant for ``name`` (origin ``<prefix>-factory``).  Used for both
+    ``.py`` sources and ``.pyi`` stubs.
+    """
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError):
+        return {}
+    parents = _parents(tree)
+    found: dict[str, list[tuple[str, str]]] = {}
+
+    def add(qualname: str, annotation: str, origin: str) -> None:
+        found.setdefault(qualname, []).append((annotation, origin))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.returns is not None:
+            prefix = _qualified_prefix(node, parents)
+            qualname = f"{prefix}.{node.name}" if prefix else node.name
+            origin = f"{origin_prefix}-overload" if _is_overload(node) else origin_prefix
+            add(qualname, ast.unparse(node.returns), origin)
+
+    # Module-level aliases (``Euler_Phi = euler_phi``, ``prime_factors =
+    # prime_divisors``): the alias carries the target's declaration.
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
+            continue
+        if not isinstance(stmt.value, ast.Name):
+            continue
+        alias, target = stmt.targets[0].id, stmt.value.id
+        if alias == target or alias in found:
+            continue
+        for pairs in (found.get(target),):
+            if pairs:
+                found[alias] = [
+                    (a, f"{o}-alias" if not o.endswith("-alias") else o)
+                    for a, o in pairs
+                ]
+                break
+
+    # Factory instances: module-level ``GF = FiniteFieldFactory(...)`` whose
+    # class carries ``__call__: Callable[..., X]`` — the annotation form of
+    # merged upstream PRs like sagemath/sage#42670.
+    classes: dict[str, ast.ClassDef] = {
+        n.name: n for n in tree.body if isinstance(n, ast.ClassDef)
+    }
+    imported_classes: dict[str, str] = {}  # local name -> class name
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ImportFrom):
+            for alias in stmt.names:
+                imported_classes[alias.asname or alias.name] = alias.name
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        for target in stmt.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            call = stmt.value
+            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)):
+                continue
+            cls_name = call.func.id
+            cls = classes.get(cls_name)
+            if cls is None and cls_name in imported_classes:
+                # The class lives in another module of this package; look it
+                # up there so the pattern also resolves across re-exports.
+                cls = _find_class_in_module_dir(source, cls_name)
+            if cls is None:
+                continue
+            for body in cls.body:
+                if (
+                    isinstance(body, ast.AnnAssign)
+                    and isinstance(body.target, ast.Name)
+                    and body.target.id == "__call__"
+                ):
+                    ret = _callable_return(body.annotation)
+                    if ret:
+                        add(target.id, ret, f"{origin_prefix}-factory")
+                elif (
+                    isinstance(body, ast.FunctionDef)
+                    and body.name == "__call__"
+                    and body.returns is not None
+                ):
+                    # The #43009 form: @overload-decorated forwarding
+                    # __call__ methods on the factory class — each overload
+                    # contributes a variant for the instance's calls.
+                    origin = (
+                        f"{origin_prefix}-factory-overload"
+                        if _is_overload(body)
+                        else f"{origin_prefix}-factory"
+                    )
+                    add(target.id, ast.unparse(body.returns), origin)
+    return found
+
+
+def _find_class_in_module_dir(source: Path, class_name: str) -> ast.ClassDef | None:
+    """Best-effort class lookup among the sibling modules of ``source``."""
+    try:
+        for path in sorted(source.parent.glob("*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, SyntaxError):
+                continue
+            for node in tree.body:
+                if isinstance(node, ast.ClassDef) and node.name == class_name:
+                    return node
+    except OSError:
+        pass
+    return None
+
+
+def pyx_annotation_variants(source: Path) -> dict[str, list[tuple[str, str]]]:
+    """Single-variant view of the Cython line-walk (origin ``source``)."""
+    return {
+        qualname: [(annotation, "source")]
+        for qualname, annotation in source_annotations(source).items()
+    }
+
+
+def _stubgen_owned_stubs(module_file: Path) -> frozenset[Path]:
+    """``.pyi`` paths this toolchain itself installed beside the source.
+
+    Those stubs carry the curated fixes — matching against them is circular
+    (the curated table agreeing with itself).  The in-place install manifest
+    lists every file we own; stubs NOT in it are assumed to ship with Sage.
+    """
+    for directory in (module_file.parent, module_file.parent.parent):
+        manifest = directory / ".sage-pycharm-stubgen-in-place.json"
+        if manifest.is_file():
+            try:
+                import json
+
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+                return frozenset(
+                    (directory / Path(raw)).resolve()
+                    for raw in payload.get("files", [])
+                )
+            except (OSError, ValueError):
+                return frozenset()
+    return frozenset()
+
+
+def _stub_candidates(module_file: Path, extra_roots: list[Path]) -> list[Path]:
+    """``.pyi`` paths declaring this module: its own tree plus extra roots.
+
+    The module's own tree contributes the sibling stub directly — UNLESS
+    the in-place install manifest lists it (that stub is our own curated
+    output; circular evidence).  Each extra root (e.g. a develop checkout —
+    a *different* tree, never an ancestor) is resolved by the module's
+    package-relative path under both root conventions (with and without the
+    leading ``sage`` segment).
+    """
+    candidates: list[Path] = []
+    owned = _stubgen_owned_stubs(module_file)
+    sibling = module_file.with_suffix(".pyi")
+    if sibling.is_file() and sibling.resolve() not in owned:
+        candidates.append(sibling)
+    try:
+        relative = module_file.relative_to(module_file.parent.parent).with_suffix(".pyi")
+    except ValueError:
+        return candidates
+    for root in extra_roots:
+        for cand in (root / relative, root / "sage" / relative):
+            if cand.is_file() and cand not in candidates:
+                candidates.append(cand)
+    return candidates
+
+
+def _extra_tree_variants(
+    module: str, qualname: str, extra_roots: list[Path]
+) -> list[tuple[str, str]]:
+    """Variants declared in an extra tree (a develop checkout preview).
+
+    Considers both the ``.py`` source (including its overload stacks and
+    factory ``__call__`` class annotations — merged upstream PRs) and any
+    ``.pyi`` stub, under both root conventions.
+    """
+    parts = module.split(".")
+    variants: list[tuple[str, str]] = []
+    for root in extra_roots:
+        for relative in (Path(*parts), Path(*parts[1:]) if parts[:1] == ["sage"] else None):
+            if relative is None:
+                continue
+            for suffix, origin in ((".py", "tree"), (".pyi", "pyi")):
+                path = root / relative.with_suffix(suffix)
+                if not path.is_file():
+                    continue
+                pairs = python_annotation_variants(path, origin).get(qualname, [])
+                variants.extend(pairs)
+    return variants
+
+
+def resolve_declaration(
+    module: str,
+    qualname: str,
+    package_root: Path,
+    extra_roots: list[Path] | None = None,
+) -> list[tuple[str, str]]:
+    """Every (annotation, origin) variant declared upstream for a symbol.
+
+    Lookup order: the module's own source (``.py``/``.pyx``), the factory
+    pattern in that source, then sibling ``.pyi`` stubs in the package tree
+    and everything (source, overloads, factories, stubs) in each extra root
+    (e.g. a develop checkout, previewing the post-merge state).
+    """
+    extra_roots = extra_roots or []
+    variants: list[tuple[str, str]] = []
+    source = find_source_file(package_root, module)
+    if source is not None:
+        if source.suffix == ".py":
+            variants.extend(
+                (a, o)
+                for q, pairs in python_annotation_variants(source).items()
+                if q == qualname
+                for a, o in pairs
+            )
+        else:
+            variants.extend(pyx_annotation_variants(source).get(qualname, []))
+        for stub in _stub_candidates(source, extra_roots):
+            variants.extend(python_annotation_variants(stub, "pyi").get(qualname, []))
+    if extra_roots:
+        variants.extend(_extra_tree_variants(module, qualname, extra_roots))
+    # De-duplicate identical (annotation, origin) pairs, keep order.
+    seen: set[tuple[str, str]] = set()
+    unique: list[tuple[str, str]] = []
+    for pair in variants:
+        if pair not in seen:
+            seen.add(pair)
+            unique.append(pair)
+    return unique
+
+
 def run_conformance(
     package_root: Path,
     curated: dict[str, dict[str, Any]] | None = None,
+    extra_roots: list[Path] | None = None,
 ) -> list[ConformanceFinding]:
-    """Compare every curated ``return`` fix against the source declaration."""
+    """Compare every curated ``return`` fix against the upstream declaration.
+
+    Coverage perception includes ``@overload`` stacks, sibling ``.pyi``
+    stubs (in the package tree and any ``extra_roots``), and
+    factory-instance ``__call__`` class annotations — matching findings
+    carry the matching ``origin``.
+    """
     curated = SUPPLEMENTAL_DOCS if curated is None else curated
     findings: list[ConformanceFinding] = []
     for module, entries in curated.items():
-        source = find_source_file(package_root, module)
-        annotations = source_annotations(source) if source is not None else {}
         for qualname, entry in entries.items():
             if not isinstance(entry, dict):
                 continue
             curated_return = entry.get("return")
             if not curated_return:
                 continue
-            declared = annotations.get(qualname)
-            if not declared or declared == "Any":
+            variants = resolve_declaration(module, qualname, package_root, extra_roots)
+            real = [(a, o) for a, o in variants if a and a != "Any"]
+            if not real:
                 findings.append(
                     ConformanceFinding(module, qualname, "unannotated", curated_return)
                 )
                 continue
-            status = (
-                "ok"
-                if _declarations_match(declared, curated_return)
-                else "conflict"
-            )
-            findings.append(
-                ConformanceFinding(module, qualname, status, curated_return, declared)
-            )
+            for declared, origin in real:
+                if _declarations_match(declared, curated_return):
+                    findings.append(
+                        ConformanceFinding(
+                            module, qualname, "ok", curated_return, declared, origin
+                        )
+                    )
+                    break
+            else:
+                # A curated UNION is covered when every member matches some
+                # upstream variant — exactly how the polymorphic helpers
+                # were annotated upstream (one @overload per path).
+                members = split_union(curated_return)
+                if members and all(
+                    any(_declarations_match(a, member) for a, _ in real)
+                    for member in members
+                ):
+                    matched = next(
+                        (o for a, o in real if _declarations_match(a, members[0])),
+                        real[0][1],
+                    )
+                    findings.append(
+                        ConformanceFinding(
+                            module, qualname, "ok", curated_return, curated_return, matched
+                        )
+                    )
+                    continue
+                findings.append(
+                    ConformanceFinding(
+                        module, qualname, "conflict", curated_return, real[0][0], real[0][1]
+                    )
+                )
     findings.sort(key=lambda f: (f.status != "conflict", f.module, f.qualname))
     return findings
+
+
+def prune_candidates(
+    findings: list[ConformanceFinding],
+) -> list[dict[str, Any]]:
+    """Curated ``return`` entries made redundant by upstream coverage.
+
+    Every ``ok`` finding with a non-None origin (matched in source, a
+    ``.pyi`` stub, an overload variant, or a factory ``__call__``
+    annotation) is a pruning candidate; the human reviews the list and
+    deletes the entries.  ``unannotated`` and ``conflict`` findings never
+    qualify.
+    """
+    return [
+        {
+            "module": f.module,
+            "qualname": f.qualname,
+            "curated": f.curated,
+            "matched_declaration": f.annotation,
+            "origin": f.origin,
+        }
+        for f in findings
+        if f.status == "ok" and f.origin
+    ]
 
 
 @dataclass(frozen=True)
