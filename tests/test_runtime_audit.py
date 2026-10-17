@@ -523,6 +523,56 @@ class ObservedAttributionTests(unittest.TestCase):
             self.assertEqual(summary.observed_deferred_skipped, 0)
             compile(rewritten, "base.pyi", "exec")
 
+    def test_defining_stub_missing_member_gets_it_appended(self) -> None:
+        # Dunders never enter the audit's own additions pass (public names
+        # only); a defining-class stub that lacks the observed member gets it
+        # appended with the real runtime signature and observed return.
+        def base_pow(self, exp):
+            return self
+
+        Base = type("Base", (), {"__pow__": base_pow, "__module__": "sage.demo.base"})
+        Child = type("Child", (Base,), {"__module__": "sage.demo.child"})
+        base_module = types.ModuleType("sage.demo.base")
+        base_module.Base = Base
+        child_module = types.ModuleType("sage.demo.child")
+        child_module.Child = Child
+
+        import sys as _sys
+
+        _sys.modules["sage.demo.base"] = base_module
+        _sys.modules["sage.demo.child"] = child_module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            demo = root / "sage" / "demo"
+            demo.mkdir(parents=True)
+            (demo / "base.pyi").write_text(
+                "class Base:\n    def known(self) -> int: ...\n",
+                encoding="utf-8",
+            )
+            (demo / "child.pyi").write_text(
+                "from sage.demo.base import Base\n\n\nclass Child(Base):\n    pass\n",
+                encoding="utf-8",
+            )
+            (demo / "__init__.pyi").write_text("", encoding="utf-8")
+
+            def importer(name: str):
+                return {"sage.demo.base": base_module, "sage.demo.child": child_module}[name]
+
+            observed = {
+                "sage.demo.child.Child": {
+                    "__pow__": {"expression": "Widget", "module": "sage.demo.widget"}
+                }
+            }
+            summary = audit_stub_tree(root, importer=importer, observed=observed)
+
+            rewritten = (demo / "base.pyi").read_text(encoding="utf-8")
+            self.assertIn("def __pow__(self, exp) -> Widget: ...", rewritten)
+            self.assertIn("from sage.demo.widget import Widget", rewritten)
+            self.assertEqual(summary.observed_deferred_added, 1)
+            self.assertEqual(summary.observed_deferred_applied, 0)
+            compile(rewritten, "base.pyi", "exec")
+
     def test_added_member_carries_observed_type_instead_of_any(self) -> None:
         class Thing:
             def value(self):

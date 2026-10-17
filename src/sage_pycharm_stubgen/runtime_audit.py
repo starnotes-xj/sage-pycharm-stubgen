@@ -59,7 +59,13 @@ class RuntimeAuditSummary:
     classes_expanded: int = 0
     observed_returns: int = 0
     observed_deferred_applied: int = 0
+    observed_deferred_added: int = 0
+    observed_deferred_already_precise: int = 0
+    observed_deferred_no_class: int = 0
     observed_deferred_skipped: int = 0
+    attribution_own_override: int = 0
+    attribution_dynamic: int = 0
+    observed_deferred_no_stub: list[str] = dataclasses.field(default_factory=list)
     sample_batches_crashed: int = 0
     inherited_skipped: int = 0
     classes_resolved_deep: int = 0
@@ -751,9 +757,15 @@ def audit_stub_text(
                 defining = next(
                     (c for c in runtime_cls.__mro__ if name in vars(c)), None
                 )
-                if defining is None or defining is runtime_cls:
-                    # dynamic attribute, or the class's own runtime override
-                    # (the additions pass below declares it when reachable)
+                if defining is None:
+                    # category-injected / __getattr__-provided: no static
+                    # defining class to attribute to
+                    summary.attribution_dynamic += 1
+                    continue
+                if defining is runtime_cls:
+                    # the class's own runtime override (the additions pass
+                    # declares it when the stub hierarchy allows)
+                    summary.attribution_own_override += 1
                     continue
                 deferred_observed[
                     (defining.__module__, defining.__name__, name)
@@ -850,9 +862,14 @@ def _apply_deferred_observed(
     """Apply MRO-attributed observed returns to the defining class's stub.
 
     ``deferred`` maps ``(module, class, member)`` to the sampler observation
-    collected while auditing a SUBCLASS receiver (the operator lives on the
+    collected while auditing a SUBCLASS receiver (the member lives on the
     defining class).  Targets live in arbitrary files, so this runs after
-    the whole per-file pass.  Fail-closed per file: a re-parse failure
+    the whole per-file pass.  Three dispositions per member: upgrade the
+    existing ``-> Any`` / unannotated def; APPEND the member (real runtime
+    signature + observed return — the audit's own additions only cover
+    public names, so inherited dunders missing from the defining stub
+    would otherwise stay missing forever); or record it as already
+    precise / unlocatable.  Fail-closed per file: a re-parse failure
     reverts that file's edit.
     """
     if not deferred:
@@ -876,6 +893,8 @@ def _apply_deferred_observed(
         )
         if stub is None:
             summary.observed_deferred_skipped += len(members)
+            if len(summary.observed_deferred_no_stub) < 50:
+                summary.observed_deferred_no_stub.append(f"{module}.{cls}")
             continue
         text = stub.read_text(encoding="utf-8")
         try:
@@ -884,32 +903,72 @@ def _apply_deferred_observed(
             summary.observed_deferred_skipped += len(members)
             continue
         replacements: list[tuple[int, str, str]] = []
+        insertions: list[tuple[int, list[str]]] = []
         imports: set[tuple[str, str]] = set()
+        target_node = None
         for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef) or node.name != cls:
+            if isinstance(node, ast.ClassDef) and node.name == cls:
+                target_node = node
+                break
+        if target_node is None:
+            summary.observed_deferred_no_class += len(members)
+            continue
+        # ANY declaration counts (def, class, alias assignment) — appending a
+        # def next to an alias would duplicate the member (merge runs earlier).
+        declared_here: set[str] = set()
+        for s in target_node.body:
+            if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                declared_here.add(s.name)
+            elif isinstance(s, ast.Assign):
+                declared_here.update(t.id for t in s.targets if isinstance(t, ast.Name))
+            elif isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name):
+                declared_here.add(s.target.id)
+        first_stmt = target_node.body[0]
+        first_line = text.splitlines()[first_stmt.lineno - 1]
+        indent = first_line[: len(first_line) - len(first_line.lstrip())]
+        for name, info in sorted(members.items()):
+            expr = str(info.get("expression") or "")
+            module_of_type = str(info.get("module") or "")
+            if not re.fullmatch(r"[A-Za-z_]\w*", expr):
                 continue
-            for stmt in node.body:
-                if (
-                    not isinstance(stmt, ast.FunctionDef)
-                    or stmt.decorator_list
-                    or stmt.name not in members
-                ):
-                    continue
-                info = members[stmt.name]
-                expr = str(info.get("expression") or "")
-                if not re.fullmatch(r"[A-Za-z_]\w*", expr):
-                    continue
+            stmt = next(
+                (
+                    s
+                    for s in target_node.body
+                    if isinstance(s, ast.FunctionDef) and s.name == name
+                ),
+                None,
+            )
+            if stmt is not None:
                 replacement = _observed_replacement(stmt, expr)
                 if replacement is None:
+                    summary.observed_deferred_already_precise += 1
                     continue
                 replacements.append(replacement)
-                module_of_type = str(info.get("module") or "")
-                if module_of_type:
-                    imports.add((expr, module_of_type))
                 summary.observed_returns += 1
                 summary.observed_deferred_applied += 1
-            break
-        if not replacements:
+            elif name in declared_here:
+                # declared as an alias/attribute, not a def: leave it be
+                summary.observed_deferred_already_precise += 1
+                continue
+            else:
+                # The defining class's stub lacks the member entirely (the
+                # audit's own additions pass only covers public names —
+                # inherited dunders land here).  Append it with the real
+                # runtime signature and the observed return.
+                rendered = _render_deferred_member(module, cls, name)
+                if rendered is None:
+                    summary.observed_deferred_no_class += 1
+                    continue
+                rendered = _type_rendered_lines(rendered, expr)
+                insertions.append(
+                    (target_node.body[-1].end_lineno, [indent + line for line in rendered])
+                )
+                summary.observed_returns += 1
+                summary.observed_deferred_added += 1
+            if module_of_type:
+                imports.add((expr, module_of_type))
+        if not replacements and not insertions:
             continue
         lines = text.splitlines(keepends=True)
         for lineno, old, new in replacements:
@@ -917,14 +976,20 @@ def _apply_deferred_observed(
             marker = target.rfind(old) if old == "):" else target.find(old)
             if marker >= 0:
                 lines[lineno - 1] = target[:marker] + new + target[marker + len(old) :]
+        for insert_at, new_lines in sorted(insertions, key=lambda e: e[0], reverse=True):
+            lines[insert_at:insert_at] = [
+                line if line.endswith("\n") else line + "\n" for line in new_lines
+            ]
         new_text = "".join(lines)
         try:
             new_tree = ast.parse(new_text)
             compile(new_text, str(stub), "exec")
         except (SyntaxError, ValueError) as exc:
             summary.errors.append(f"{module}: deferred revert: {exc}")
-            summary.observed_returns -= len(replacements)
+            applied = len(replacements) + len(insertions)
+            summary.observed_returns -= applied
             summary.observed_deferred_applied -= len(replacements)
+            summary.observed_deferred_added -= len(insertions)
             continue
         needed_imports = [f"from {m} import {e}\n" for e, m in sorted(imports)]
         if needed_imports:
@@ -938,6 +1003,27 @@ def _apply_deferred_observed(
                 continue
         stub.write_text(new_text, encoding="utf-8")
         summary.files_touched += 1
+
+
+def _render_deferred_member(module: str, cls: str, name: str) -> list[str] | None:
+    """Render a def for a member of the runtime class ``(module, cls)``."""
+    try:
+        runtime_module = importlib.import_module(module)
+        runtime_cls = getattr(runtime_module, cls)
+        lines, _kind, _quality = _render_member(name, runtime_cls)
+        return lines
+    except Exception:  # noqa: BLE001 - unresolvable target degrades to skip
+        try:
+            return [_FALLBACK_DEF.format(name=name)]
+        except Exception:
+            return None
+
+
+def _type_rendered_lines(lines: list[str], expr: str) -> list[str]:
+    """Swap the single ``-> Any: ...`` of freshly rendered lines for ``expr``."""
+    if sum("-> Any: ..." in line for line in lines) == 1:
+        return [line.replace("-> Any: ...", f"-> {expr}: ...") for line in lines]
+    return lines
 
 
 def audit_stub_tree(
@@ -1010,6 +1096,8 @@ def _audit_modules(
         summary.inherited_skipped += file_summary.inherited_skipped
         summary.classes_resolved_deep += file_summary.classes_resolved_deep
         summary.observed_returns += file_summary.observed_returns
+        summary.attribution_own_override += file_summary.attribution_own_override
+        summary.attribution_dynamic += file_summary.attribution_dynamic
         summary.classes_skipped.extend(f"{module_name}.{n}" for n in file_summary.classes_skipped)
         summary.errors.extend(f"{module_name}: {e}" for e in file_summary.errors)
         if new_text != original:
