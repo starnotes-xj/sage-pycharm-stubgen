@@ -39,6 +39,8 @@ import json
 import sys
 from pathlib import Path
 
+from . import __version__
+
 SAMPLE_OPS = {
     "__add__": lambda a, b: a + b,
     "__sub__": lambda a, b: a - b,
@@ -406,32 +408,109 @@ def collect_candidates(stub_root: Path) -> list[dict[str, str]]:
     return candidates
 
 
+#: A crashed batch is retried in halves this many times (then the remaining
+#: chunk is given up): each split re-runs sage.all in a fresh child, so the
+#: retry budget is bounded explicitly, and retries use a shorter timeout —
+#: the full batch already proved the surviving classes sample fast, so a
+#: half that overruns is hung on the poison, not slow.
+_RETRY_DEPTH = 2
+_RETRY_TIMEOUT = 120.0
+_RETRY_CHILD_BUDGET = 48
+
+#: Batches run in this many concurrent children (each imports its own
+#: sage.all, ~2-3 GB RSS per child; 4 fits the typical WSL allocation).
+_DEFAULT_WORKERS = 4
+
+#: Observations are cached across runs under this file in the stub tree,
+#: keyed by the Sage AND stubgen versions — a repeat regen of an unchanged
+#: stack skips sampling entirely.
+_OBSERVED_CACHE_NAME = "observed-cache.json"
+
+
+def _observed_cache_path(stub_root: Path) -> Path:
+    return stub_root / _OBSERVED_CACHE_NAME
+
+
+def _load_observed_cache(stub_root: Path) -> dict[str, dict[str, dict]]:
+    try:
+        from sage.version import version as sage_version
+
+        cache = json.loads(_observed_cache_path(stub_root).read_text(encoding="utf-8"))
+    except (ImportError, OSError, json.JSONDecodeError, ValueError):
+        return {}
+    if cache.get("sageVersion") != sage_version or cache.get("stubgenVersion") != __version__:
+        return {}
+    observations = cache.get("observations")
+    return observations if isinstance(observations, dict) else {}
+
+
+def _save_observed_cache(stub_root: Path, merged: dict[str, dict[str, dict]]) -> None:
+    try:
+        from sage.version import version as sage_version
+    except ImportError:
+        return
+    payload = {
+        "sageVersion": sage_version,
+        "stubgenVersion": __version__,
+        "observations": merged,
+    }
+    _observed_cache_path(stub_root).write_text(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+    )
+
+
 def run_batches(
     stub_root: Path,
     *,
     batch_size: int = _BATCH_SIZE,
     timeout: float = 600.0,
     sample_methods: bool = False,
-) -> tuple[dict[str, dict[str, dict]], list[int]]:
+    max_workers: int = _DEFAULT_WORKERS,
+) -> tuple[dict[str, dict[str, dict]], list[str]]:
     """Sample all candidate classes in isolated subprocess batches.
 
-    A batch whose child crashes (segfaulting compiled module) is skipped and
-    reported by index; every other batch proceeds.
+    Batches run in up to ``max_workers`` concurrent children.  A crashed
+    child (segfaulting compiled module) costs its observations after the
+    crash point only — the child rewrites its out file after every
+    observation — and the batch is then retried in halves so the classes
+    after the poison get their turn anyway.  ``crashed`` lists the chunk
+    labels that ultimately failed (leaf labels for split retries).
+
+    Observations are cached in the stub tree keyed by the Sage and stubgen
+    versions: a repeat run of an unchanged stack skips already-sampled
+    classes (delete ``observed-cache.json`` to force a full resample).
     """
     import subprocess
     import tempfile
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
 
     candidates = collect_candidates(stub_root)
-    merged: dict[str, dict[str, dict]] = {}
-    crashed: list[int] = []
+    cached = _load_observed_cache(stub_root)
+    cached_keys = {f"{item['module']}.{item['class']}" for item in candidates} & set(cached)
+    pending = [
+        item
+        for item in candidates
+        if f"{item['module']}.{item['class']}" not in cached_keys
+    ]
+    # Only non-empty observations reach the audit; classes whose cache entry
+    # is empty were sampled and produced nothing — resampling them every run
+    # would burn the same dead receivers again.
+    merged: dict[str, dict[str, dict]] = {
+        key: cached[key] for key in cached_keys if cached[key]
+    }
+    crashed: list[str] = []
     with tempfile.TemporaryDirectory() as temp:
         temp_dir = Path(temp)
-        for index in range(0, len(candidates), batch_size):
-            batch = candidates[index : index + batch_size]
-            candidates_file = temp_dir / f"candidates-{index}.json"
-            output_file = temp_dir / f"observed-{index}.json"
+        state_lock = threading.Lock()
+        spawned = 0
+
+        def attempt(chunk: list[dict[str, str]], label: str, limit: float) -> bool:
+            nonlocal spawned
+            candidates_file = temp_dir / f"candidates-{label}.json"
+            output_file = temp_dir / f"observed-{label}.json"
             candidates_file.write_text(
-                json.dumps(batch, ensure_ascii=False), encoding="utf-8"
+                json.dumps(chunk, ensure_ascii=False), encoding="utf-8"
             )
             child_argv = [
                 sys.executable,
@@ -444,22 +523,61 @@ def run_batches(
             ]
             if sample_methods:
                 child_argv.append("--sample-methods")
+            with state_lock:
+                spawned += 1
             try:
                 completed = subprocess.run(
                     child_argv,
                     capture_output=True,
-                    timeout=timeout,
+                    timeout=limit,
                 )
+                ok = completed.returncode == 0
             except subprocess.TimeoutExpired:
-                # A poisonous class can hang the child; the child rewrites the
-                # out file after every observation, so salvage what it saw.
-                crashed.append(index)
-            else:
-                if completed.returncode != 0:
-                    crashed.append(index)
+                ok = False
             if output_file.is_file():
-                for key, observed in json.loads(
-                    output_file.read_text(encoding="utf-8")
-                ).items():
-                    merged.setdefault(key, {}).update(observed)
+                try:
+                    batch_observed = json.loads(output_file.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    batch_observed = {}
+                with state_lock:
+                    for key, observed in batch_observed.items():
+                        merged.setdefault(key, {}).update(observed)
+            return ok
+
+        def sample(
+            chunk: list[dict[str, str]], label: str, limit: float, depth: int = 0
+        ) -> None:
+            if attempt(chunk, label, limit):
+                return
+            with state_lock:
+                give_up = (
+                    depth >= _RETRY_DEPTH
+                    or len(chunk) <= 1
+                    or spawned > _RETRY_CHILD_BUDGET
+                )
+                if give_up:
+                    crashed.append(label)
+            if give_up:
+                return
+            middle = len(chunk) // 2
+            sample(chunk[:middle], f"{label}L", _RETRY_TIMEOUT, depth + 1)
+            sample(chunk[middle:], f"{label}R", _RETRY_TIMEOUT, depth + 1)
+
+        batch_labels = list(range(0, len(pending), batch_size))
+        if batch_labels:
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                list(
+                    pool.map(
+                        lambda start: sample(
+                            pending[start : start + batch_size], str(start), timeout
+                        ),
+                        batch_labels,
+                    )
+                )
+    # Persist sampled-but-empty classes as negatives so they are skipped
+    # next run too.
+    negative_keys = {
+        f"{item['module']}.{item['class']}" for item in pending
+    } - set(merged)
+    _save_observed_cache(stub_root, {**merged, **{key: {} for key in negative_keys}})
     return merged, crashed

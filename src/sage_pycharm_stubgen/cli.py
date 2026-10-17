@@ -134,13 +134,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="With --runtime-audit: skip observed-return sampling (operator dunders probed in isolated subprocess batches)",
     )
     parser.add_argument(
-        "--sample-methods",
+        "--no-sample-methods",
         action="store_true",
         help=(
-            "With --runtime-audit: the sampler also probes own-class public "
-            "methods whose signature has no required parameters (opt-in; "
-            "named-method calls can segfault compiled modules, so this runs "
-            "only inside the isolated sampler subprocesses)"
+            "With --runtime-audit: keep sampling to arithmetic operator "
+            "dunders only.  The default also probes own-class public "
+            "methods whose signature has no required parameters (in the "
+            "same isolated subprocess batches, with crashed batches retried "
+            "in halves)"
         ),
     )
     parser.add_argument(
@@ -611,7 +612,7 @@ def main(argv: list[str] | None = None) -> int:
         doc_language=args.doc_language,
         runtime_audit=args.runtime_audit,
         no_sample=args.no_sample,
-        sample_methods=args.sample_methods,
+        sample_methods=not args.no_sample_methods,
     )
     print(f"SageMath: {summary.sage_version}")
     print(f"Discovered: {summary.discovered}")

@@ -360,13 +360,19 @@ symbolic expressions, combinatorics and graphs.  Same-instance `a % a` is
 never attempted — it segfaults unwrapped compiled code on some matrix
 families; the scalar-side pairs are clean and yield the same information.
 
-`--sample-methods` (opt-in, off by default) extends the probe to a class's
-own public named methods, but only those whose signature has no required
-parameter beyond the bound `self` — the same double-run-stability and
-subprocess-isolation guards apply.  Named-method calls carry a real
-segfault risk the operator protocol avoids, so the tier is opt-in; on a
-38-class probe (Sage 10.9) it added 760 method returns with zero crashed
-batches.
+`--sample-methods` tier (DEFAULT since 0.9.18; `--no-sample-methods`
+opts out) extends the probe to a class's own public named methods, but
+only those whose signature has no required parameter beyond the bound
+``self`` — the same double-run-stability and subprocess-isolation guards
+apply, and a crashed batch is retried in halves so the classes after the
+poison still get sampled.  On the full Sage 10.9 corpus the tier measured
+3007 observations, 1447 of them upgrading an `-> Any` / unannotated stub
+def in the integrated regen (16x the operator-only yield).  Batches run
+four children in parallel and observations are cached in
+``observed-cache.json`` (keyed by the Sage and stubgen versions — a
+repeat regen of an unchanged stack skips sampling entirely; delete the
+file to force a resample), bringing the full generate+sample+audit+index
+run to ~20 minutes.
 
 ## Conformance check
 

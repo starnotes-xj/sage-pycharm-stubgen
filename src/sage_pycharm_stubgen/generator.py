@@ -935,7 +935,7 @@ def generate(
     doc_language: str = "zh",
     runtime_audit: bool = False,
     no_sample: bool = False,
-    sample_methods: bool = False,
+    sample_methods: bool = True,
 ) -> GenerationSummary:
     if doc_language not in {"zh", "en"}:
         raise ValueError(f"Unsupported doc language: {doc_language!r}")
