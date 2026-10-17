@@ -240,6 +240,18 @@ def build_parser() -> argparse.ArgumentParser:
             "upstream PR. Never apply these to the installed tree"
         ),
     )
+    conformance_parser.add_argument(
+        "--export-pyi",
+        type=Path,
+        metavar="DIR",
+        help=(
+            "Write upstream-ready .pyi stub files into DIR for every curated "
+            "COMPILED (.pyx) module — the channel source patches cannot "
+            "reach (recompile required). Uses the installed stub tree "
+            "(curated precision already applied), stripped of docstrings "
+            "and private members. PR review material; never applied in place"
+        ),
+    )
     verify_parser = subparsers.add_parser(
         "verify",
         help=(
@@ -398,6 +410,37 @@ def run_conformance_cmd(args: argparse.Namespace) -> int:
             print(f"  skipped (already annotated upstream): {name}")
         for name in export.skipped_conflict:
             print(f"  CONFLICT (needs human decision): {name}")
+        return 0
+
+    if args.export_pyi is not None:
+        from .conformance import export_pyi_stubs
+
+        pyi_export = export_pyi_stubs(source_root, args.export_pyi)
+        print(f"Upstream .pyi stubs written: {len(pyi_export.files)}")
+        print(f"Definitions exported: {pyi_export.defs_exported}")
+        if pyi_export.probe_files:
+            print(
+                f"assert_type probe companions: {len(pyi_export.probe_files)} file(s), "
+                f"{pyi_export.probe_assertions} assertion(s) — move to "
+                "src/sage/tests/type_checking/ and register the .pyi in meson.build"
+            )
+        if pyi_export.builtin_qualifications:
+            print(
+                f"Builtin shadowing qualifications: {pyi_export.builtin_qualifications}"
+            )
+        for name in pyi_export.skipped_no_stub[:5]:
+            print(f"  skipped (stub not installed beside source): {name}")
+        if len(pyi_export.skipped_no_stub) > 5:
+            print(
+                f"  ... and {len(pyi_export.skipped_no_stub) - 5} more (run --install first)"
+            )
+        if pyi_export.skipped_not_pyx:
+            print(
+                f"  {len(pyi_export.skipped_not_pyx)} pure-Python module(s) use "
+                "--export-upstream instead"
+            )
+        for warning in pyi_export.warnings[:10]:
+            print(f"  WARNING: {warning}")
         return 0
 
     if args.json:

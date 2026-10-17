@@ -308,6 +308,416 @@ class UpstreamExportResult:
     skipped_not_found: list[str] = field(default_factory=list)
 
 
+#: Dunders an upstream stub legitimately declares.  The rest of the ``__``
+#: namespace is implementation detail and stays out of PR material.
+_EXPORT_DUNDER_ALLOWLIST = frozenset({
+    "__all__",
+    "__init__", "__call__", "__getitem__", "__setitem__", "__delitem__",
+    "__iter__", "__len__", "__contains__", "__bool__", "__eq__", "__ne__",
+    "__hash__", "__repr__", "__str__", "__enter__", "__exit__",
+    "__aenter__", "__aexit__", "__neg__", "__pos__", "__abs__",
+    "__invert__", "__add__", "__radd__", "__iadd__", "__sub__", "__rsub__",
+    "__isub__", "__mul__", "__rmul__", "__imul__", "__truediv__",
+    "__rtruediv__", "__itruediv__", "__floordiv__", "__rfloordiv__",
+    "__ifloordiv__", "__mod__", "__rmod__", "__imod__", "__pow__",
+    "__rpow__", "__ipow__", "__divmod__", "__rdivmod__", "__lshift__",
+    "__rshift__", "__and__", "__rand__", "__or__", "__ror__", "__xor__",
+    "__rxor__", "__matmul__", "__rmatmul__", "__int__", "__float__",
+    "__index__",
+})
+
+#: Builtin *typing* names that must be qualified when the module binds the
+#: same name to a non-class object (an alias/assign): as an annotation the
+#: builtin collection is virtually always what the source meant.
+_BUILTIN_TYPING_NAMES = ("list", "dict", "set", "frozenset", "tuple", "type")
+
+
+def _exportable_name(name: str) -> bool:
+    return not name.startswith("_") or name in _EXPORT_DUNDER_ALLOWLIST
+
+
+def _stmt_names(stmt: ast.stmt) -> set[str]:
+    """Top-level names a module statement binds."""
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {stmt.name}
+    if isinstance(stmt, ast.Assign):
+        return {t.id for t in stmt.targets if isinstance(t, ast.Name)}
+    if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+        return {stmt.target.id}
+    if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+        return {alias.asname or alias.name.split(".")[0] for alias in stmt.names}
+    return set()
+
+
+def _strip_docstrings(tree: ast.Module) -> None:
+    """Remove every bare string-literal statement (upstream stubs stay lean).
+
+    Docstrings usually sit first in a body, but stub enrichment also appends
+    them after the import block — and a string expression is never behavior,
+    so all of them go.  Bodies left empty get ``...``.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        kept = [
+            stmt
+            for stmt in node.body
+            if not (
+                isinstance(stmt, ast.Expr)
+                and isinstance(stmt.value, ast.Constant)
+                and isinstance(stmt.value.value, str)
+            )
+        ]
+        if not kept:
+            kept = [ast.Expr(value=ast.Constant(value=Ellipsis))]
+        node.body = kept
+
+
+def _filter_private(tree: ast.Module) -> None:
+    """Drop private members from the module and every class body.
+
+    A class whose public members were all filtered keeps a ``...`` body —
+    the class itself stays (it is importable API) but its private surface
+    does not.
+    """
+
+    def filtered(body: list[ast.stmt]) -> list[ast.stmt]:
+        kept: list[ast.stmt] = []
+        for stmt in body:
+            names = _stmt_names(stmt)
+            if names and not any(_exportable_name(name) for name in names):
+                continue
+            if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+                aliases = [
+                    alias
+                    for alias in stmt.names
+                    if _exportable_name(alias.asname or alias.name.split(".")[0])
+                ]
+                if not aliases:
+                    continue
+                stmt = ast.ImportFrom(stmt.module, aliases, stmt.level) if isinstance(
+                    stmt, ast.ImportFrom
+                ) else ast.Import(aliases)
+            if isinstance(stmt, ast.ClassDef):
+                stmt.body = filtered(stmt.body) or [
+                    ast.Expr(value=ast.Constant(value=Ellipsis))
+                ]
+            kept.append(stmt)
+        return kept
+
+    tree.body = filtered(tree.body)
+
+
+def _drop_module_state_assigns(tree: ast.Module) -> int:
+    """Drop module-level placeholder assignments from PR material.
+
+    Converter placeholders (``set_integer_from_gen = None``,
+    ``initialized = False``) describe the module's C globals, not its API —
+    upstream they would mis-type real functions as ``None``.  Only CONSTANT
+    bindings go: function/class aliases and ``TypeVar`` calls are public
+    API and stay (an alias may even shadow a builtin, which the
+    qualification pass then handles).
+    """
+    placeholder_types = (type(None), bool, int, float, str, bytes)
+    kept: list[ast.stmt] = []
+    dropped = 0
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and isinstance(
+            stmt.value.value, placeholder_types
+        ):
+            targets = {t.id for t in stmt.targets if isinstance(t, ast.Name)}
+            if not targets & {"__all__"}:
+                dropped += 1
+                continue
+        kept.append(stmt)
+    tree.body = kept
+    return dropped
+
+
+def _qualify_shadowed_builtins(tree: ast.Module) -> int:
+    """Qualify builtin collection annotations shadowed by non-class bindings.
+
+    A module-level ``list = some_function`` makes a stub annotation ``list``
+    resolve to the function; the collection is what was meant, so rewrite
+    those annotation names to ``builtins.<name>``.  Shadowing via an actual
+    class declaration is left alone — there the annotation means the class.
+    """
+    class_names = {
+        stmt.name for stmt in tree.body if isinstance(stmt, ast.ClassDef)
+    }
+    bound = set()
+    for stmt in tree.body:
+        bound |= _stmt_names(stmt)
+    shadowed = {
+        name
+        for name in _BUILTIN_TYPING_NAMES
+        if name in bound and name not in class_names
+    }
+    if not shadowed:
+        return 0
+
+    def qualify(node: ast.expr) -> ast.expr:
+        if isinstance(node, ast.Name) and node.id in shadowed:
+            return ast.Attribute(value=ast.Name(id="builtins"), attr=node.id)
+        return node
+
+    changed = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.returns is not None:
+                node.returns = qualify(node.returns)
+        elif isinstance(node, ast.AnnAssign) and node.annotation is not None:
+            node.annotation = qualify(node.annotation)
+        if isinstance(node, ast.arguments):
+            for arg in [*node.args, *node.kwonlyargs, *node.posonlyargs]:
+                if arg.annotation is not None:
+                    arg.annotation = qualify(arg.annotation)
+    # ast.walk does not re-yield rewritten parents; count via a second pass.
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.Attribute) and isinstance(child.value, ast.Name):
+                if child.value.id == "builtins" and child.attr in shadowed:
+                    changed += 1
+    return changed
+
+
+@dataclass
+class PyiExportResult:
+    """Outcome of exporting upstream-ready .pyi stubs for compiled modules."""
+
+    files: list[str] = field(default_factory=list)
+    defs_exported: int = 0
+    builtin_qualifications: int = 0
+    probe_files: list[str] = field(default_factory=list)  # assert_type companions
+    probe_assertions: int = 0
+    skipped_no_stub: list[str] = field(default_factory=list)  # stub not installed
+    skipped_not_pyx: list[str] = field(default_factory=list)  # .py modules patch in-source
+    skipped_no_entries: list[str] = field(default_factory=list)  # curated module w/o source
+    warnings: list[str] = field(default_factory=list)
+
+
+def export_pyi_stubs(
+    package_root: Path,
+    out_dir: Path,
+    curated: dict[str, dict[str, Any]] | None = None,
+) -> PyiExportResult:
+    """Write upstream-ready ``.pyi`` stubs for curated compiled modules.
+
+    The compiled-module answer to :func:`export_upstream_patches`: source
+    patches cannot annotate ``.pyx`` methods (recompile required), but Sage
+    merges ``.pyi`` stubs beside the source (rational.pyi / integer.pyi
+    precedent).  The INSTALLED stub tree already carries the curated
+    precision — docstrings stripped, private members dropped, builtin
+    shadowing qualified — so each curated ``.pyx`` module becomes a
+    PR-ready stub file.  Output layout mirrors the package
+    (``DIR/sage/...``); the result is review material, never applied to the
+    installed tree.
+    """
+    curated = SUPPLEMENTAL_DOCS if curated is None else curated
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = PyiExportResult()
+
+    for module, entries in sorted(curated.items()):
+        if not any(isinstance(entry, dict) for entry in entries.values()):
+            continue
+        source = find_source_file(package_root, module)
+        if source is None:
+            result.skipped_no_entries.append(module)
+            continue
+        if source.suffix != ".pyx":
+            result.skipped_not_pyx.append(module)
+            continue
+        stub = source.with_suffix(".pyi")
+        if not stub.is_file():
+            result.skipped_no_stub.append(module)
+            continue
+        try:
+            tree = ast.parse(stub.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, ValueError) as exc:
+            result.warnings.append(f"{module}: stub unparseable ({exc})")
+            continue
+
+        _strip_docstrings(tree)
+        _filter_private(tree)
+        _drop_module_state_assigns(tree)
+        result.builtin_qualifications += _qualify_shadowed_builtins(tree)
+
+        header = "from __future__ import annotations"
+        text = header + "\n\n" + ast.unparse(tree) + "\n"
+        try:
+            ast.parse(text)
+        except SyntaxError:
+            result.warnings.append(f"{module}: cleaned stub does not re-parse")
+            continue
+        defs = sum(
+            1
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        )
+        result.defs_exported += defs
+        target = out_dir / Path(*module.split(".")).with_suffix(".pyi")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        result.files.append(str(target))
+
+        probe = _render_type_probe(module, tree)
+        if probe is not None:
+            probe_text, assertions = probe
+            probe_target = out_dir / "type_checking_probes" / (
+                module.replace(".", "_") + "_returns.py"
+            )
+            probe_target.parent.mkdir(parents=True, exist_ok=True)
+            validated, dropped = _validate_probe_file(probe_target, probe_text)
+            if dropped and dropped != [-1]:
+                if "assert_type(" not in validated:
+                    result.warnings.append(
+                        f"{module}: probe dropped entirely (no runnable line)"
+                    )
+                    continue
+                result.warnings.append(
+                    f"{module}: dropped {len(dropped)} probe line(s) that "
+                    "failed under the live runtime"
+                )
+                assertions -= len(dropped)
+            probe_target.write_text(validated, encoding="utf-8")
+            result.probe_files.append(str(probe_target))
+            result.probe_assertions += assertions
+    return result
+
+
+def _builtin_words() -> frozenset[str]:
+    import builtins as builtins_module
+
+    return frozenset(name for name in dir(builtins_module) if not name.startswith("_"))
+
+
+def _render_type_probe(
+    module: str, tree: ast.Module
+) -> tuple[str, int] | None:
+    """The upstream-style ``assert_type`` companion for an exported stub.
+
+    Sage's acceptance pattern for a new ``.pyi`` is stub + meson entry + a
+    ``type_checking`` probe of ``assert_type`` lines (rational_returns.py
+    precedent).  Receivers come from the sampler's verified recipe table;
+    annotation names are imported from the modules the STUB imports them
+    from (matching the hand-written precedent's plain ``Integer`` style).
+    ``None`` when no class has both a recipe and a precisely-annotated
+    named method.
+    """
+    from .runtime_sample import RECEIVER_RECIPES
+
+    recipes = dict(RECEIVER_RECIPES)
+    builtin_words = _builtin_words()
+    # Annotation-name -> defining sage module, from the stub's own imports.
+    origin: dict[str, str] = {}
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ImportFrom) and stmt.module and stmt.module.startswith("sage."):
+            for alias in stmt.names:
+                if alias.name != "*":
+                    origin[alias.asname or alias.name] = stmt.module
+    needed_imports: dict[str, set[str]] = {}
+    lines: list[str] = []
+    assertions = 0
+
+    def qualify(annotation: str) -> str:
+        def repl(match: re.Match[str]) -> str:
+            word = match.group(1)
+            module_of = origin.get(word)
+            if module_of and word not in builtin_words:
+                needed_imports.setdefault(module_of, set()).add(word)
+            return word
+
+        return re.sub(r"\b(\w+)\b", repl, annotation)
+
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        recipe = recipes.get(node.name)
+        if recipe is None:
+            continue
+        annotated = [
+            stmt
+            for stmt in node.body
+            if isinstance(stmt, ast.FunctionDef)
+            and not stmt.name.startswith("_")
+            and stmt.returns is not None
+            # ``Any`` (alone or inside a union) asserts nothing — probes
+            # carry precise returns only.
+            and not re.search(r"\bAny\b", ast.unparse(stmt.returns))
+        ]
+        if not annotated:
+            continue
+        var = "r_" + node.name
+        lines.append(f"cls = {node.name}")
+        lines.append(f"{var} = {recipe}")
+        for stmt in annotated:
+            lines.append(f"assert_type({var}.{stmt.name}(), {qualify(ast.unparse(stmt.returns))})")
+            assertions += 1
+    if not lines:
+        return None
+    import_lines = [
+        f"from {module_of} import {', '.join(sorted(names))}"
+        for module_of, names in sorted(needed_imports.items())
+    ]
+    body = [
+        "# Generated by sage-pycharm-stubgen conformance --export-pyi.",
+        "# Review before PR: move to src/sage/tests/type_checking/ and add the",
+        "# .pyi to meson.build; receivers reuse the sampler's verified recipes.",
+        "from typing import assert_type",
+        "",
+        "from sage.all import *  # noqa: F401,F403 - sage test convention",
+        f"from {module} import *  # noqa: F401,F403 - stubbed classes",
+        *import_lines,
+        "",
+        *lines,
+        "",
+    ]
+    return "\n".join(body), assertions
+
+
+def _validate_probe_file(path: Path, source: str) -> tuple[str, list[int]]:
+    """Execute a rendered probe under the live Sage runtime, dropping the
+    ``assert_type`` lines that fail (stub signatures can lose required
+    parameters; a probe line that cannot run is noise, not evidence).
+
+    Returns the (possibly reduced) probe source and the dropped line
+    numbers (1-based, in the ORIGINAL source).  When Sage is not
+    importable the probe is returned untouched — validation is best
+    effort and the unit-test environment has no Sage.
+    """
+    try:
+        import sage.all  # noqa: F401
+    except ImportError:
+        return source, []
+
+    current = source
+    dropped: list[int] = []
+    for _ in range(200):
+        try:
+            exec(compile(current, str(path), "exec"), {})
+            return current, dropped
+        except BaseException as exc:  # noqa: BLE001 - drop the failing line
+            import traceback
+
+            # The exception usually originates deep inside compiled code;
+            # the probe's own frame is the deepest one in THIS file.
+            probe_frames = [
+                frame
+                for frame in traceback.extract_tb(exc.__traceback__)
+                if frame.filename == str(path)
+            ]
+            if not probe_frames:
+                return source, [-1]  # failure outside the probe: keep as-is
+            lineno = probe_frames[-1].lineno
+            lines = current.splitlines()
+            if not 1 <= lineno <= len(lines) or "assert_type" not in lines[lineno - 1]:
+                return current, dropped + [-1]
+            dropped.append(lineno)
+            del lines[lineno - 1]
+            current = "\n".join(lines) + "\n"
+    return current, dropped
+
+
 def _module_known_names(tree: ast.Module) -> set[str]:
     """Names importable at module scope: imports plus top-level defs/classes."""
     names: set[str] = set()

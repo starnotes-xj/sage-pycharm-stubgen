@@ -399,6 +399,31 @@ equivalent `ssize_t` spelling, one deliberately un-stubbed GAP crash
 module) — so upstream `.pyx` annotations are adopted by the converter
 as-is and the matching curated entries retire as Sage ships them.
 
+### Exporting upstream `.pyi` stubs for compiled modules
+
+Source patches cannot annotate `.pyx` methods (upstream would have to
+recompile), but Sage merges `.pyi` stubs beside the source
+(`rational.pyi` / `integer.pyi` precedent, each PR = stub + meson.build
+entry + a `type_checking` assert_type probe):
+
+```bash
+sage-pycharm-stubgen conformance --export-pyi out/
+```
+
+For every curated compiled module this writes `out/sage/.../<mod>.pyi`
+from the INSTALLED stub tree (curated precision already applied), cleaned
+for upstream review: docstrings stripped, private members dropped (an
+allowlist keeps arithmetic dunders and `__all__`), converter placeholder
+assignments (`x = None`) removed, builtin shadowing qualified
+(`builtins.list`), and a `from __future__ import annotations` header
+prepended.  Each stub also gets an `assert_type` probe companion under
+`out/type_checking_probes/` — receivers reuse the sampler's verified
+recipe table, and every probe line is executed against the live runtime
+at export time; lines that cannot run (stub signatures that lost required
+parameters) are dropped with a warning.  The output is PR review
+material, never applied in place; before opening a PR check upstream
+develop for in-flight stubs (rational/integer are #42999/#43000).
+
 ## Duplicate-declaration merge and product lint
 
 Several independent writers decorate a generated stub (the converter,
