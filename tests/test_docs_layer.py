@@ -6,11 +6,16 @@ from unittest import mock
 
 from sage_pycharm_stubgen import docs_layer
 from sage_pycharm_stubgen.docs_layer import (
+    EXAMPLE_MARKER,
     FORMAT_VERSION,
     get_doc,
+    get_entry,
     load_docs,
+    load_entries,
+    parse_blob,
     reload,
     remove_doc,
+    render_entry,
     save_docs,
     set_doc,
     stats,
@@ -29,8 +34,12 @@ class DocsLayerTests(unittest.TestCase):
                     "version": FORMAT_VERSION,
                     "docs": {
                         "sage.demo.mod": {
-                            "alpha": "第一段文档",
-                            "beta": "第二段文档",
+                            "alpha": {"summary": "第一段文档"},
+                            "beta": {
+                                "summary": "第二段文档",
+                                "sections": [{"heading": "陷阱", "items": ["坑一", "坑二"]}],
+                                "example": "sage: 1 + 1\n    2",
+                            },
                         }
                     },
                 },
@@ -49,6 +58,8 @@ class DocsLayerTests(unittest.TestCase):
     def test_load_reads_and_caches(self) -> None:
         docs = load_docs()
         self.assertEqual(docs["sage.demo.mod"]["alpha"], "第一段文档")
+        self.assertIn("陷阱:", docs["sage.demo.mod"]["beta"])
+        self.assertIn(EXAMPLE_MARKER, docs["sage.demo.mod"]["beta"])
         # Cached: an external edit stays invisible until reload().
         self.data.write_text("{}", encoding="utf-8")
         self.assertIn("sage.demo.mod", load_docs())
@@ -56,16 +67,20 @@ class DocsLayerTests(unittest.TestCase):
         self.assertEqual(load_docs(), {})
 
     def test_get_doc_hit_and_miss(self) -> None:
-        self.assertEqual(get_doc("sage.demo.mod", "beta"), "第二段文档")
+        self.assertEqual(get_doc("sage.demo.mod", "beta"), load_docs()["sage.demo.mod"]["beta"])
         self.assertIsNone(get_doc("sage.demo.mod", "missing"))
         self.assertIsNone(get_doc("sage.absent.mod", "alpha"))
+        self.assertEqual(get_entry("sage.demo.mod", "alpha"), {"summary": "第一段文档"})
+        self.assertIsNone(get_entry("sage.demo.mod", "missing"))
 
     def test_set_and_remove_roundtrip(self) -> None:
-        set_doc("sage.demo.mod", "gamma", "新文档")
-        self.assertEqual(get_doc("sage.demo.mod", "gamma"), "新文档")
+        set_doc("sage.demo.mod", "gamma", "新文档\n\n陷阱:\n- 新坑")
+        entry = get_entry("sage.demo.mod", "gamma")
+        self.assertEqual(entry["summary"], "新文档")
+        self.assertEqual(entry["sections"][0]["items"], ["新坑"])
         save_docs()
         reload()
-        self.assertEqual(get_doc("sage.demo.mod", "gamma"), "新文档")
+        self.assertEqual(get_doc("sage.demo.mod", "gamma"), "新文档\n\n陷阱:\n- 新坑")
         self.assertTrue(remove_doc("sage.demo.mod", "gamma"))
         self.assertIsNone(get_doc("sage.demo.mod", "gamma"))
         self.assertFalse(remove_doc("sage.demo.mod", "gamma"))
@@ -77,9 +92,7 @@ class DocsLayerTests(unittest.TestCase):
         self.assertEqual(written, self.data)
         payload = json.loads(self.data.read_text(encoding="utf-8"))
         self.assertEqual(payload["version"], FORMAT_VERSION)
-        self.assertEqual(
-            list(payload["docs"]["sage.demo.other"]), ["eta", "zeta"]
-        )
+        self.assertEqual(list(payload["docs"]["sage.demo.other"]), ["eta", "zeta"])
         # No temp residue beside the data file.
         self.assertEqual(list(self.data.parent.glob("*.tmp")), [])
 
@@ -89,8 +102,9 @@ class DocsLayerTests(unittest.TestCase):
         self.assertTrue(validate()[0].startswith("unreadable data file"))
 
     def test_unknown_version_fails_open(self) -> None:
+        # Anything that is not FORMAT_VERSION — older or newer — loads empty.
         self.data.write_text(
-            json.dumps({"version": 99, "docs": {"m": {"s": "d"}}}),
+            json.dumps({"version": FORMAT_VERSION - 1, "docs": {"m": {"s": {"summary": "d"}}}}),
             encoding="utf-8",
         )
         self.assertEqual(reload(), {})
@@ -98,22 +112,92 @@ class DocsLayerTests(unittest.TestCase):
     def test_validate_reports_structural_problems(self) -> None:
         self.data.write_text(
             json.dumps(
-                {"version": FORMAT_VERSION, "docs": {"m": {"s": "", "": "x", "t": 5}}},
+                {
+                    "version": FORMAT_VERSION,
+                    "docs": {
+                        "m": {
+                            "s": {},
+                            "": "x",
+                            "t": 5,
+                            "u": {"summary": "ok", "bogus": 1},
+                            "v": {"sections": [{"heading": "陷阱"}]},
+                            "w": {"sections": [{"heading": "返回", "items": ["Integer"]}]},
+                        }
+                    },
+                },
                 ensure_ascii=False,
             ),
             encoding="utf-8",
         )
         problems = validate()
-        self.assertTrue(any("m.s" in p for p in problems))
+        self.assertTrue(any("m.s" in p and "non-empty" in p for p in problems))
         self.assertTrue(any("non-string symbol" in p for p in problems))
-        self.assertTrue(any("m.t" in p for p in problems))
+        self.assertTrue(any("m.t" in p and "object" in p for p in problems))
+        self.assertTrue(any("m.u" in p and "unknown field" in p for p in problems))
+        self.assertTrue(any("m.v" in p and "no content" in p for p in problems))
+        self.assertFalse(any(p.startswith("m.w") for p in problems))
 
     def test_stats_counts_layers(self) -> None:
         numbers = stats()
         self.assertEqual(numbers["modules"], 1)
         self.assertEqual(numbers["symbols"], 2)
-        self.assertEqual(numbers["characters"], len("第一段文档") + len("第二段文档"))
+        beta_rendered = load_docs()["sage.demo.mod"]["beta"]
+        self.assertEqual(
+            numbers["characters"], len("第一段文档") + len(beta_rendered)
+        )
+        self.assertEqual(numbers["pitfall_symbols"], 1)
+        self.assertEqual(numbers["pitfall_items"], 2)
         self.assertEqual(numbers["per_module"], {"sage.demo.mod": 2})
+
+
+class ParseRenderTests(unittest.TestCase):
+    def test_house_layout_roundtrip(self) -> None:
+        blob = (
+            "一句话概述。\n"
+            "\n"
+            "参数:\n"
+            "- ``a`` -- 说明\n"
+            "- ``b`` -- 说明\n"
+            "\n"
+            "返回:\n"
+            "Integer\n"
+            "\n"
+            "陷阱:\n"
+            "- 坑一\n"
+            "- 坑二\n"
+            "\n"
+            "示例::\n"
+            "\n"
+            "    sage: 1 + 1\n"
+            "    2"
+        )
+        self.assertEqual(render_entry(parse_blob(blob)), blob)
+
+    def test_sections_without_summary_roundtrip(self) -> None:
+        blob = "陷阱:\n- 只有陷阱\n\n示例::\n\n    sage: 2\n    2"
+        self.assertEqual(render_entry(parse_blob(blob)), blob)
+
+    def test_interior_blank_lines_survive(self) -> None:
+        blob = "概述\n\n注意:\n段一\n\n段二\n\n示例::\n\n    sage: 3\n    3"
+        self.assertEqual(render_entry(parse_blob(blob)), blob)
+
+    def test_full_corpus_roundtrip(self) -> None:
+        """The shipped file's every entry must survive parse -> render."""
+        reload()  # drop scratch caches from other test classes
+        for module, symbols in load_entries().items():
+            for symbol, entry in symbols.items():
+                blob = get_doc(module, symbol)
+                self.assertEqual(
+                    render_entry(parse_blob(blob)),
+                    blob,
+                    f"{module}.{symbol} does not round-trip",
+                )
+
+    def test_shipped_corpus_matches_entries(self) -> None:
+        reload()
+        for module, symbols in load_entries().items():
+            for symbol, entry in symbols.items():
+                self.assertEqual(parse_blob(render_entry(entry)), entry)
 
 
 class SupplementalDocsCompatTests(unittest.TestCase):
