@@ -180,6 +180,12 @@ def build_sidecar_files(
         argv = [
             "--source-root", str(stub_root),
             "--source-base", str(stub_root.parent),
+            # The stub tree root IS the sage package: without this prefix the
+            # generator derives ``rings.integer.Integer``-style qualified
+            # names, the plugin's owner-keyed member lookup matches nothing,
+            # and SageApiClassMembersProvider silently serves zero members
+            # (the "frac lost completion" class of breakage).
+            "--module-prefix", "sage",
             "--sage-version", sage_version,
             "--python-version", python_version,
             "--output", str(index_path),

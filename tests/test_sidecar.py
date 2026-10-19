@@ -130,9 +130,14 @@ class SidecarTests(unittest.TestCase):
                 hashlib.sha256(files[name].encode("utf-8")).hexdigest(),
             )
 
-        # the acceptance-critical member made it into the index
+        # the acceptance-critical member made it into the index, under the
+        # sage.-prefixed qualified name the plugin's owner-keyed member
+        # lookup requires: entry.ownerName is derived by dropping the last
+        # segment, so the prefix IS the owner key (module-prefix regression
+        # guard)
         qualified = [e["qualifiedName"] for e in entries]
         self.assertIn("sage.demo.point.Point.__rmul__", qualified)
+        self.assertIn("sage.demo.point.Point.xy", qualified)
 
     def test_install_sidecar_writes_versioned_directory(self) -> None:
         files = {
