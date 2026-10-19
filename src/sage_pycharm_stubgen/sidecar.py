@@ -19,7 +19,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -259,6 +261,52 @@ def build_sidecar_files(
     }
     files.update(doc_files)
     return files
+
+
+def build_install_epoch(
+    stub_root: Path,
+    sage_version: str,
+    stubgen_commit: str = "",
+) -> str:
+    """The ``install-epoch.json`` marker the plugin watches for auto-reload.
+
+    PyCharm 2026.2 reaches WSL files through IJent, whose change watching
+    does not report out-of-band writes — neither from inside WSL nor
+    through the ``\\wsl.localhost`` share — so mass stub reinstalls are
+    invisible to a running IDE and even a cache invalidation re-scans
+    library roots unreliably.  The epoch file breaks that cycle: the
+    plugin compares it against the last epoch it processed and, when it
+    moved, refreshes the stub tree itself (VFS refresh of the recorded
+    URL) and reloads the sidecar.  No user action required.
+    """
+    payload = {
+        "epoch": time.time_ns(),
+        "stubgenVersion": __version__,
+        "stubgenCommit": stubgen_commit,
+        "sageVersion": sage_version,
+        "stubRoot": Path(stub_root).as_posix(),
+        "stubRootUrl": _stub_root_vfs_url(Path(stub_root)),
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+
+
+def _stub_root_vfs_url(stub_root: Path) -> str | None:
+    """The IDE-side VFS URL for the stub root, when one can be derived.
+
+    WSL ``$WSL_DISTRO_NAME`` plus the in-WSL path maps to the
+    ``file:////wsl.localhost/<distro>/<path>`` form the IDE uses for WSL
+    interpreters; a ``/mnt/<drive>/`` bind mount maps to its Windows drive.
+    ``None`` when the environment offers no mapping (the plugin then only
+    reloads the sidecar, skipping the VFS refresh).
+    """
+    posix = stub_root.as_posix()
+    drive = re.match(r"^/mnt/([a-z])/(.*)$", posix)
+    if drive:
+        return f"file:///{drive.group(1).upper()}:/{drive.group(2)}"
+    distro = os.environ.get("WSL_DISTRO_NAME")
+    if distro:
+        return f"file:////wsl.localhost/{distro}{posix}"
+    return None
 
 
 def discover_pycharm_config_dirs() -> list[Path]:

@@ -1,8 +1,10 @@
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from sage_pycharm_stubgen.sidecar import (
     DOCS_BUCKET_COUNT,
@@ -238,6 +240,36 @@ class CapacityWarningTests(unittest.TestCase):
         warning = capacity_warning(100_000, int(0.9 * 288 * 1024 * 1024))
         self.assertIsNotNone(warning)
         self.assertIn("bytes", warning)
+
+
+class InstallEpochTests(unittest.TestCase):
+    def test_epoch_payload_carries_stub_root_and_version(self) -> None:
+        from sage_pycharm_stubgen.sidecar import build_install_epoch
+
+        with tempfile.TemporaryDirectory() as temp:
+            text = build_install_epoch(Path(temp) / "sage", "10.9", "abc123")
+        payload = json.loads(text)
+        self.assertEqual(payload["sageVersion"], "10.9")
+        self.assertEqual(payload["stubgenCommit"], "abc123")
+        self.assertEqual(payload["stubgenVersion"], "0.9.20")
+        self.assertIn("stubRoot", payload)
+        self.assertGreater(payload["epoch"], 1_700_000_000_000_000_000)
+
+    def test_vfs_url_mapping_for_wsl_and_drive_mounts(self) -> None:
+        from sage_pycharm_stubgen import sidecar
+        from sage_pycharm_stubgen.sidecar import _stub_root_vfs_url
+
+        with mock.patch.dict(os.environ, {"WSL_DISTRO_NAME": "Ubuntu"}):
+            self.assertEqual(
+                _stub_root_vfs_url(Path("/home/starnotes/envs/sage/lib/site-packages/sage")),
+                "file:////wsl.localhost/Ubuntu/home/starnotes/envs/sage/lib/site-packages/sage",
+            )
+            self.assertEqual(
+                _stub_root_vfs_url(Path("/mnt/c/Users/x/proj")),
+                "file:///C:/Users/x/proj",
+            )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(_stub_root_vfs_url(Path("/home/u/sage")))
 
 
 if __name__ == "__main__":

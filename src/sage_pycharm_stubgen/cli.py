@@ -764,6 +764,16 @@ def main(argv: list[str] | None = None) -> int:
             files = build_sidecar_files(
                 Path(summary.output_root), summary.sage_version, python_version
             )
+            # The auto-reload marker: lets the plugin refresh the stub tree
+            # and the sidecar itself after every reinstall (IJent, the WSL
+            # file backend, never reports out-of-band writes).
+            from .sidecar import build_install_epoch
+
+            files["install-epoch.json"] = build_install_epoch(
+                Path(summary.sage_package),
+                summary.sage_version,
+                summary.generator_commit or "",
+            )
             destinations = sidecar_target_dirs(args.sidecar_dir)
             if not destinations:
                 print(
