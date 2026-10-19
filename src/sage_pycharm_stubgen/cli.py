@@ -742,6 +742,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Taken over pre-existing stubs: {result.taken_over_files}")
         print(f"Stub target: {result.target_root}")
         print(f"Manifest: {result.manifest}")
+        # WSL-side writes generate no file-watcher events through
+        # \\wsl.localhost, so PyCharm keeps serving its old stub index (the
+        # recurring "completion regressed" reports) until the caches are
+        # invalidated.  Say so while the install is fresh.
+        print(
+            "PyCharm: File -> Invalidate Caches... is REQUIRED to pick up "
+            "these stubs (a plain restart is not enough on WSL interpreters)"
+        )
     if args.install and not args.no_sidecar:
         try:
             from .sidecar import (
