@@ -10,9 +10,12 @@ from pathlib import Path
 
 from sage_pycharm_stubgen.cli import build_parser
 from sage_pycharm_stubgen.generator import (
+    audit_all_stub_imports,
     discover_sources,
     enhance_factory_instances,
+    enhance_factorization_stub,
     enhance_finite_field_stub,
+    enhance_instance_annotations,
     enhance_integer_mod_stub,
     enhance_integer_stub,
     enhance_lazy_imports,
@@ -429,6 +432,125 @@ def IntegerMod(parent, value): ...
 
         ast.parse(result)
 
+    def test_factorization_stub_gains_iter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "factorization.pyi"
+            stub.write_text(
+                "from typing import Any\n"
+                "class Factorization(SageObject):\n"
+                "    def __getitem__(self, i): ...\n"
+                "    def __len__(self): ...\n",
+                encoding="utf-8",
+            )
+
+            changed = enhance_factorization_stub(stub)
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        self.assertIn(
+            "def __iter__(self) -> Iterator[tuple[Any, Any]]: ...", result
+        )
+        self.assertIn("from typing import Iterator", result)
+        import ast
+
+        ast.parse(result)
+
+    def test_factorization_stub_iter_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub = Path(temp_dir) / "factorization.pyi"
+            stub.write_text(
+                "from typing import Any, Iterator\n"
+                "class Factorization(SageObject):\n"
+                "    def __iter__(self) -> Iterator[tuple[Any, Any]]: ...\n",
+                encoding="utf-8",
+            )
+
+            self.assertFalse(enhance_factorization_stub(stub))
+
+    def test_instance_annotations_annotate_same_file_class_singletons(self) -> None:
+        # PyCharm does not evaluate bare assignments inside .pyi stubs, so the
+        # `from <module> import ZZ as ZZ` re-export stays untyped and every
+        # chained result collapses; the same-file singleton must carry an
+        # explicit annotation for the type to flow.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            stub = root / "integer_ring.pyi"
+            stub.write_text(
+                "from sage.rings.integer import Integer\n"
+                "class IntegerRing_class:\n"
+                "    def __call__(self, x=None) -> Integer: ...\n"
+                "ZZ = IntegerRing_class()\n"
+                "Z = ZZ\n"
+                "QQ = RationalField()\n"
+                "flag = None\n",
+                encoding="utf-8",
+            )
+            other = root / "words.pyi"
+            other.write_text("class WordClass:\n    pass\n", encoding="utf-8")
+
+            self.assertTrue(enhance_instance_annotations(root))
+            result = stub.read_text(encoding="utf-8")
+
+        self.assertIn("ZZ: IntegerRing_class = IntegerRing_class()", result)
+        self.assertNotRegex(result, r"(?m)^Z:")  # non-call RHS untouched
+        self.assertNotRegex(result, r"(?m)^QQ:")  # func is not a same-file class
+        self.assertNotRegex(result, r"(?m)^flag:")  # non-call assignment untouched
+        import ast
+
+        ast.parse(result)
+
+        # Idempotent: the annotated form is an AnnAssign, not an Assign.
+        self.assertFalse(enhance_instance_annotations(root))
+
+    def test_instance_annotations_skip_self_named_singletons(self) -> None:
+        # `Foo: Foo = Foo()` would make the annotation ambiguous with the
+        # variable binding, so self-named singletons stay untouched.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            stub = root / "words.pyi"
+            stub.write_text(
+                "class Word:\n    pass\nWord = Word()\n",
+                encoding="utf-8",
+            )
+
+            self.assertFalse(enhance_instance_annotations(root))
+            self.assertIn("Word = Word()", stub.read_text(encoding="utf-8"))
+
+    def test_instance_annotations_use_runtime_class_for_factory_rhs(self) -> None:
+        # `RR = RealField()` — the RHS names a factory def, but the runtime
+        # module binds RR to a RealField_class instance whose class lives in
+        # the same stub; the runtime MRO supplies the annotation class.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            stub = root / "real_mpfr.pyi"
+            stub.write_text(
+                "class RealField_class:\n    pass\n"
+                "def RealField(prec=53): ...\n"
+                "RR = RealField()\n",
+                encoding="utf-8",
+            )
+
+            class RealField_class:
+                pass
+
+            RealField_class.__module__ = "fake_real_mpfr"
+            fake_module = types.ModuleType("fake_real_mpfr")
+            fake_module.__dict__["RR"] = RealField_class()
+            sys.modules["fake_real_mpfr"] = fake_module
+            self.addCleanup(sys.modules.pop, "fake_real_mpfr", None)
+            # The enhancer derives the dotted module from the file path, so
+            # stage the stub under the matching directory name.
+            staged = root / "fake_real_mpfr.pyi"
+            stub.rename(staged)
+
+            self.assertTrue(enhance_instance_annotations(root))
+            result = staged.read_text(encoding="utf-8")
+
+        self.assertIn("RR: RealField_class = RealField()", result)
+        import ast
+
+        ast.parse(result)
+
     def test_finite_field_stub_gains_characteristic(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             stub = Path(temp_dir) / "finite_field_base.pyi"
@@ -458,6 +580,162 @@ def IntegerMod(parent, value): ...
         self.assertIn("from builtins import float as _Type_pi", stub)
         self.assertIn("pi: _Type_pi", stub)
         self.assertNotIn("_hidden", stub)
+
+    def test_sage_all_stub_keeps_type_alias_for_foreign_singletons(self) -> None:
+        # math.pi's home module (builtins) does not bind `pi`, so the
+        # annotation-alias shape must stay.
+        stub = render_sage_all_stub({"pi": math.pi})
+
+        self.assertIn("from builtins import float as _Type_pi", stub)
+        self.assertIn("pi: _Type_pi", stub)
+
+    def test_sage_all_stub_singletons_stay_attribute_form(self) -> None:
+        # REGRESSION (2026-10-19 outage): the `_Type_*` attribute shape is
+        # load-bearing for the plugin's resolve chain.  A same-name home
+        # binding (ZZ lives in sage.rings.integer_ring) must NOT become a
+        # from-import re-export — that resolves the name to the import
+        # ELEMENT, the one target PyCharm cannot type, and every chained
+        # result (q = ZZ(35) / ZZ(3)) degraded to the namespace fallback.
+        home = types.ModuleType("sage.rings.integer_ring")
+
+        class IntegerRing_class:
+            pass
+
+        IntegerRing_class.__module__ = "sage.rings.integer_ring"
+        ring = IntegerRing_class()
+        home.IntegerRing_class = IntegerRing_class
+        home.ZZ = ring
+        sys.modules["sage.rings.integer_ring"] = home
+        self.addCleanup(sys.modules.pop, "sage.rings.integer_ring", None)
+
+        stub = render_sage_all_stub({"ZZ": ring})
+
+        self.assertIn(
+            "from sage.rings.integer_ring import IntegerRing_class as _Type_ZZ", stub
+        )
+        self.assertIn("ZZ: _Type_ZZ", stub)
+        self.assertNotIn("import ZZ as ZZ", stub)
+        import ast
+
+        ast.parse(stub)
+
+    def test_annotation_falls_back_to_declared_mro_base(self) -> None:
+        # The symbolic constant `e` is a runtime-only `E` subclass of the
+        # declared `Expression`; with the tree's declared-class index the
+        # annotation must target the declared base instead of dangling.
+        home = types.ModuleType("sage.symbolic.expression")
+
+        class Expression:
+            pass
+
+        class E(Expression):
+            pass
+
+        for cls in (Expression, E):
+            cls.__module__ = "sage.symbolic.expression"
+        home.Expression = Expression
+        home.E = E
+        sys.modules["sage.symbolic.expression"] = home
+        self.addCleanup(sys.modules.pop, "sage.symbolic.expression", None)
+
+        declared = {("sage.symbolic.expression", "Expression")}
+        stub = render_sage_all_stub({"e": E()}, declared_classes=declared)
+
+        self.assertIn(
+            "from sage.symbolic.expression import Expression as _Type_e", stub
+        )
+        self.assertNotIn("import E as _Type_e", stub)
+
+    def test_audit_all_stub_imports_detects_dangling_class(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "sage").mkdir()
+            (root / "sage" / "rings").mkdir()
+            (root / "sage" / "rings" / "integer_ring.pyi").write_text(
+                "class IntegerRing_class:\n    pass\n", encoding="utf-8"
+            )
+            (root / "sage" / "all.pyi").write_text(
+                "from sage.rings.integer_ring import IntegerRing_class as _Type_ZZ\n"
+                "from sage.rings.rational_field import RationalField as _Type_QQ\n"
+                "ZZ: _Type_ZZ\n"
+                "QQ: _Type_QQ\n",
+                encoding="utf-8",
+            )
+
+            findings = audit_all_stub_imports(root)
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("RationalField", findings[0])
+        self.assertIn("_Type_QQ", findings[0])
+
+    def test_audit_all_stub_imports_flags_with_category(self) -> None:
+        # Even if a *_with_category class were someday declared, importing a
+        # runtime category wrapper is always a finding (2026-10-19 QQ case).
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "sage").mkdir()
+            (root / "sage" / "rings").mkdir()
+            (root / "sage" / "rings" / "rational_field.pyi").write_text(
+                "class RationalField_with_category:\n    pass\n", encoding="utf-8"
+            )
+            (root / "sage" / "all.pyi").write_text(
+                "from sage.rings.rational_field import RationalField_with_category as _Type_QQ\n"
+                "QQ: _Type_QQ\n",
+                encoding="utf-8",
+            )
+
+            findings = audit_all_stub_imports(root)
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("runtime-only", findings[0])
+
+    def test_audit_all_stub_imports_clean_tree_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "sage").mkdir()
+            (root / "sage" / "rings").mkdir()
+            (root / "sage" / "rings" / "integer_ring.pyi").write_text(
+                "class IntegerRing_class:\n    pass\n", encoding="utf-8"
+            )
+            (root / "sage" / "all.pyi").write_text(
+                "from sage.rings.integer_ring import IntegerRing_class as _Type_ZZ\n"
+                "from sage.rings.integer_ring import IntegerRing_class as _FactoryReturn_IntegerRing\n"
+                "ZZ: _Type_ZZ\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(audit_all_stub_imports(root), [])
+
+    def test_audit_all_stub_imports_requires_all_stub(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.assertEqual(audit_all_stub_imports(Path(temp_dir)), [])
+
+    def test_sage_all_stub_normalizes_with_category_singletons(self) -> None:
+        # The category machinery wraps QQ in RationalField_with_category —
+        # a RUNTIME-ONLY class the stubs never declare; the annotation must
+        # target the declared plain base instead of dangling.
+        home = types.ModuleType("fake_rational_field")
+
+        class RationalField:
+            pass
+
+        class RationalField_with_category(RationalField):
+            pass
+
+        for cls in (RationalField, RationalField_with_category):
+            cls.__module__ = "fake_rational_field"
+        home.RationalField = RationalField
+        home.RationalField_with_category = RationalField_with_category
+        sys.modules["fake_rational_field"] = home
+        self.addCleanup(sys.modules.pop, "fake_rational_field", None)
+
+        stub = render_sage_all_stub({"QQ": RationalField_with_category()})
+
+        self.assertIn(
+            "from fake_rational_field import RationalField as _Type_QQ", stub
+        )
+        self.assertIn("QQ: _Type_QQ", stub)
+        self.assertNotIn("RationalField_with_category", stub)
 
     def test_runtime_fallback_uses_extension_signatures(self) -> None:
         module = types.ModuleType("example")

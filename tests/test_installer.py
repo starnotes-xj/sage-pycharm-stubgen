@@ -68,6 +68,49 @@ class InstallerTests(unittest.TestCase):
         )
         self.assertGreater(result.installed_files, 0)
 
+    def test_shrunken_tree_install_is_refused_without_force(self) -> None:
+        tmp, output_root, sage_package = _make_fixtures()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        rings = output_root / "sage" / "rings"
+        for index in range(10):
+            (rings / f"full{index}.pyi").write_text(
+                "class Full: ...\n", encoding="utf-8"
+            )
+        install_stub_package(output_root, sage_package, "10.9")
+
+        # A later run that lost most of the previously owned stubs (e.g. a
+        # py-only regen after a full pyx+py run) must not silently amputate
+        # the installed tree.
+        for pyi in rings.glob("full*.pyi"):
+            pyi.unlink()
+        for index in range(3):
+            (rings / f"kept{index}.pyi").write_text(
+                "class Kept: ...\n", encoding="utf-8"
+            )
+        with self.assertRaises(RuntimeError) as ctx:
+            install_stub_package(output_root, sage_package, "10.9")
+        self.assertIn("missing", str(ctx.exception))
+        self.assertTrue((sage_package / "rings" / "full0.pyi").exists())
+
+        result = install_stub_package(
+            output_root, sage_package, "10.9", force=True
+        )
+        self.assertGreater(result.installed_files, 0)
+        self.assertFalse((sage_package / "rings" / "full0.pyi").exists())
+
+    def test_small_tree_growth_is_allowed(self) -> None:
+        tmp, output_root, sage_package = _make_fixtures()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (output_root / "sage" / "extra.pyi").write_text(
+            "class Extra: ...\n", encoding="utf-8"
+        )
+        install_stub_package(output_root, sage_package, "10.9")
+
+        (output_root / "sage" / "extra.pyi").unlink()
+        result = install_stub_package(output_root, sage_package, "10.9")
+        self.assertGreater(result.installed_files, 0)
+        self.assertFalse((sage_package / "extra.pyi").exists())
+
     def test_legacy_manifest_without_version_is_upgraded(self) -> None:
         tmp, output_root, sage_package = _make_fixtures()
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)

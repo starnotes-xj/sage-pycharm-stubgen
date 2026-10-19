@@ -361,6 +361,43 @@ def enhance_integer_stub(path: Path) -> bool:
     return True
 
 
+def enhance_factorization_stub(path: Path) -> bool:
+    """Declare ``__iter__`` on Factorization.
+
+    Factorization iterates through the legacy sequence protocol: the runtime
+    class defines ``__getitem__`` and ``__len__`` but no ``__iter__``, so
+    ``list(factor())`` works while the stub class stays incompatible with
+    ``Iterable`` — PyCharm flags ``list(N.factor())`` with "expected
+    Iterable[Any], got Factorization".  Iteration yields ``(prime,
+    exponent)`` pairs, so declare the protocol explicitly.
+    """
+    if not path.is_file():
+        return False
+    original = path.read_text(encoding="utf-8")
+    content = original
+    if "def __iter__" in content:
+        return False
+    content = re.sub(
+        r"^(class Factorization\([^)]*\):)",
+        r"\1\n\n    def __iter__(self) -> Iterator[tuple[Any, Any]]: ...",
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if "from typing import Iterator" not in content:
+        content = re.sub(
+            r"^(from typing import Any)$",
+            r"\1\nfrom typing import Iterator",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    if content == original:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
 def enhance_finite_field_stub(path: Path) -> bool:
     """Declare ``characteristic()`` and a typed ``__iter__`` on FiniteField.
 
@@ -559,6 +596,85 @@ def enhance_factory_instances(output_root: Path) -> bool:
     return changed
 
 
+def enhance_instance_annotations(output_root: Path) -> bool:
+    """Annotate module-level singleton instances with a stub-declared class.
+
+    stubgen-pyx emits ``ZZ = IntegerRing_class()``.  pyright/ty infer the
+    instance type from the constructor call, but PyCharm does not evaluate a
+    bare assignment inside a ``.pyi`` stub: the name stays untyped, so the
+    ``from <module> import ZZ as ZZ`` re-export in all.pyi (see
+    :func:`_annotation_lines`) yields a callable-but-untyped constant and the
+    whole result chain (``q = ZZ(35) / ZZ(3)`` -> Rational) collapses to the
+    namespace-name fallback.  An explicit annotation
+    (``ZZ: IntegerRing_class = IntegerRing_class()``) restores the type for
+    every checker without changing what the stub declares.
+
+    Two shapes are annotated:
+
+    - the RHS names a same-file class (``ZZ = IntegerRing_class()``);
+    - the RHS is anything else, but the runtime module (already loaded —
+      ``sys.modules`` only, never a fresh import: compiled modules in this
+      tree can segfault the process) binds the name to a value whose MRO
+      contains a class declared in the same stub
+      (``RR = RealField()`` -> ``RR: RealField_class = RealField()``).
+
+    Singletons with no same-file declared class (``CC``) are left to
+    :func:`enhance_singleton_reexports`.
+    """
+    changed = False
+    for pyi in sorted(output_root.rglob("*.pyi")):
+        try:
+            source = pyi.read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        classes = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
+        if not classes:
+            continue
+        dotted = pyi.relative_to(output_root).with_suffix("").as_posix().replace("/", ".")
+        runtime_module = sys.modules.get(dotted)
+        lines: list[str] | None = None
+        for stmt in tree.body:
+            if not (
+                isinstance(stmt, ast.Assign)
+                and len(stmt.targets) == 1
+                and isinstance(stmt.targets[0], ast.Name)
+                and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name)
+                and stmt.lineno == stmt.end_lineno
+            ):
+                continue
+            name = stmt.targets[0].id
+            func_name = stmt.value.func.id
+            cls_name: str | None = None
+            if func_name in classes and func_name != name:
+                cls_name = func_name
+            elif runtime_module is not None:
+                value = runtime_module.__dict__.get(name)
+                if value is not None:
+                    for base in type(value).__mro__:
+                        # `Foo: Foo = Foo()` would make the annotation
+                        # ambiguous with the variable binding itself.
+                        if (
+                            base.__name__ in classes
+                            and getattr(base, "__module__", None) == dotted
+                            and base.__name__ != name
+                        ):
+                            cls_name = base.__name__
+                            break
+            if cls_name is None:
+                continue
+            if lines is None:
+                lines = source.splitlines()
+            original = lines[stmt.lineno - 1]
+            rhs = original.split("=", 1)[1].strip()
+            lines[stmt.lineno - 1] = f"{name}: {cls_name} = {rhs}"
+        if lines is not None:
+            pyi.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            changed = True
+    return changed
+
+
 def enhance_method_aliases(
     output_root: Path,
     hierarchy: Any | None = None,
@@ -697,15 +813,62 @@ def _import_line(name: str, value: Any) -> str | None:
     return None
 
 
-def _annotation_lines(name: str, value: Any) -> list[str]:
+def _annotation_lines(
+    name: str, value: Any, declared_classes: set[tuple[str, str]] | None = None
+) -> list[str]:
     value_type = type(value)
     if (
         value_type.__module__ == "sage.misc.lazy_import"
         and value_type.__name__ == "LazyImport"
     ):
         return [f"{name}: Any"]
+    # The `_Type_*` annotation-alias shape (not a same-name from-import
+    # re-export) is load-bearing: the plugin's resolve provider maps an
+    # implicit sage.all name to all.pyi's top-level ATTRIBUTE, which the
+    # native engine types through the annotation chain.  A from-import
+    # re-export instead resolves the name to the import ELEMENT — the one
+    # target PyCharm cannot type at all (plugin v1.7.6 note:
+    # getTypeFromTarget only types PyFunction/PyClass/PyTypedElement), which
+    # left ZZ/QQ/RR/SR/NN untyped and every chained result degraded to the
+    # namespace fallback.
     module_name = getattr(value_type, "__module__", None)
     type_name = getattr(value_type, "__name__", None)
+    # The category machinery wraps some singletons in a RUNTIME-ONLY
+    # ``*_with_category`` subclass the stubs never declare (QQ -> RationalField_with_category
+    # while rational_field.pyi declares plain RationalField), which leaves the
+    # annotation import dangling and the name untyped.  Prefer the first MRO
+    # base of the same home module without the suffix — stubgen-pyx declares
+    # those classes.
+    if isinstance(type_name, str) and type_name.endswith("_with_category"):
+        for base in value_type.__mro__[1:]:
+            if (
+                base.__name__ == type_name[: -len("_with_category")]
+                and getattr(base, "__module__", None) == module_name
+            ):
+                type_name = base.__name__
+                break
+    # Generic declared-base fallback (e.g. the symbolic constant ``e`` is a
+    # runtime-only ``E`` subclass of the declared ``Expression``): when the
+    # generated tree is available, never import a class the stubs do not
+    # declare — a dangling alias leaves the annotation chain unresolved in
+    # PyCharm and the singleton untyped.
+    if (
+        declared_classes is not None
+        and isinstance(module_name, str)
+        and isinstance(type_name, str)
+        and (module_name, type_name) not in declared_classes
+    ):
+        for base in value_type.__mro__[1:]:
+            base_module = getattr(base, "__module__", None)
+            base_name = getattr(base, "__name__", None)
+            if (
+                isinstance(base_module, str)
+                and isinstance(base_name, str)
+                and (base_module, base_name) in declared_classes
+            ):
+                module_name = base_module
+                type_name = base_name
+                break
     alias = f"_Type_{name}"
     if (
         isinstance(module_name, str)
@@ -778,6 +941,7 @@ def render_sage_all_stub(
     namespace: Mapping[str, Any],
     factory_returns: Mapping[str, str] | None = None,
     doc_language: str = "zh",
+    declared_classes: set[tuple[str, str]] | None = None,
 ) -> str:
     factory_returns = factory_returns or {}
     imports: list[str] = []
@@ -802,9 +966,10 @@ def render_sage_all_stub(
         if line is not None:
             imports.append(line)
         else:
-            annotation_lines = _annotation_lines(name, value)
-            imports.extend(annotation_lines[:-1])
-            annotations.append(annotation_lines[-1])
+            annotation_lines = _annotation_lines(name, value, declared_classes)
+            imports.extend(line for line in annotation_lines[:-1] if line)
+            if annotation_lines[-1]:
+                annotations.append(annotation_lines[-1])
 
     unique_imports = list(dict.fromkeys(imports))
     body = [
@@ -821,6 +986,72 @@ def render_sage_all_stub(
     return "\n".join(body)
 
 
+def _declared_class_index(output_root: Path) -> set[tuple[str, str]]:
+    """``{(module, class)}`` for every top-level class the stub tree declares."""
+    declared: set[tuple[str, str]] = set()
+    root = output_root / "sage"
+    if not root.is_dir():
+        return declared
+    for pyi in root.rglob("*.pyi"):
+        dotted = pyi.relative_to(output_root).with_suffix("").as_posix().replace("/", ".")
+        try:
+            tree = ast.parse(pyi.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                declared.add((dotted, node.name))
+    return declared
+
+
+def audit_all_stub_imports(output_root: Path) -> list[str]:
+    """Dangling-import audit for the generated ``all.pyi``.
+
+    Regression guard for the 2026-10-19 completion outage: every
+    ``_Type_*``/``_FactoryReturn_*`` alias import must point at a class the
+    stub tree actually declares (runtime-only names such as
+    ``RationalField_with_category`` or the symbolic ``E`` wrapper dangle and
+    leave the singleton resolvable-but-untyped, degrading every chained
+    member lookup to the namespace fallback).  Findings are surfaced as lint
+    errors, and ``--install`` refuses to ship a tree that has any.
+    """
+    all_pyi = output_root / "sage" / "all.pyi"
+    if not all_pyi.is_file():
+        return []
+    try:
+        text = all_pyi.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(text)
+    except (OSError, SyntaxError):
+        return []
+    declared = _declared_class_index(output_root)
+    findings: list[str] = []
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or not node.module:
+            continue
+        # Only sage modules are audited: builtins/stdlib (typeshed) and
+        # third-party stubs (cypari2, ...) resolve through PyCharm's own
+        # channels; only a sage class missing from THIS tree dangles.
+        if not node.module.startswith("sage."):
+            continue
+        for alias in node.names:
+            imported = alias.name
+            bound = alias.asname or alias.name
+            if not (bound.startswith("_Type_") or bound.startswith("_FactoryReturn_")):
+                continue
+            if imported.endswith("_with_category"):
+                findings.append(
+                    f"sage/all.pyi: {bound} imports runtime-only "
+                    f"'{node.module}.{imported}' (category wrapper is never declared)"
+                )
+                continue
+            if (node.module, imported) not in declared:
+                findings.append(
+                    f"sage/all.pyi: {bound} imports '{node.module}.{imported}' "
+                    "which no stub in the tree declares"
+                )
+    return findings
+
+
 def generate_sage_all_stub(
     output_root: Path,
     doc_language: str = "zh",
@@ -831,7 +1062,10 @@ def generate_sage_all_stub(
     target.parent.mkdir(parents=True, exist_ok=True)
     inferences, unresolved = infer_factory_returns(dict(vars(sage_all)))
     factory_returns = factory_return_map(inferences)
-    content = render_sage_all_stub(dict(vars(sage_all)), factory_returns, doc_language)
+    declared = _declared_class_index(output_root)
+    content = render_sage_all_stub(
+        dict(vars(sage_all)), factory_returns, doc_language, declared_classes=declared
+    )
     target.write_text(content, encoding="utf-8")
     dynamic_unresolved = [
         match.group(1)
@@ -1047,6 +1281,12 @@ def generate(
         )
     integer_stub = output_root / "sage" / "rings" / "integer.pyi"
 
+    factorization_stub = output_root / "sage" / "structure" / "factorization.pyi"
+    if enhance_factorization_stub(factorization_stub):
+        summary.enhanced.append(
+            "sage.structure.factorization: Factorization.__iter__ (sequence protocol)"
+        )
+
     summary.docstrings = enrich_stubs(
         output_root,
         sage_package=package,
@@ -1083,7 +1323,6 @@ def generate(
         ]
         summary.factory_unresolved = factory_unresolved
         summary.dynamic_unresolved = dynamic_unresolved
-
     # AFTER generation and enrichment: turn module-level LazyImport re-exports
     # into real from-imports so names like strongly_regular_db.GF keep their
     # callee types when users `from <module> import GF`; and re-export
@@ -1096,6 +1335,10 @@ def generate(
     if enhance_factory_instances(output_root):
         summary.enhanced.append(
             "module-level factory instances re-exported via all.pyi declarations"
+        )
+    if enhance_instance_annotations(output_root):
+        summary.enhanced.append(
+            "module-level singleton instances annotated with their same-file class"
         )
     from .runtime_audit import build_stub_hierarchy
 
@@ -1139,6 +1382,12 @@ def generate(
                 f"{len(audit.modules_skipped)} unimportable module(s) skipped)"
             )
     lint_errors, lint_warnings = lint_generated_stubs(output_root)
+    # all.pyi dangling-alias audit runs with the lint pass: a dangling
+    # `_Type_*`/`_FactoryReturn_*` import silently degrades the singleton's
+    # PyCharm typing (resolvable but untyped), so findings are errors and
+    # `--install` refuses to ship the tree.
+    dangling_aliases = audit_all_stub_imports(output_root)
+    lint_errors = lint_errors + dangling_aliases
     summary.lint_errors = [str(finding) for finding in lint_errors]
     summary.lint_warnings = [str(finding) for finding in lint_warnings]
 

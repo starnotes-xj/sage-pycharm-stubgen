@@ -469,6 +469,22 @@ def normalize(raw_symbols: Iterable[RawSymbol], sage_version: str, python_versio
         if documents:
             entry["documentation"] = documents[0]
         entries.append(entry)
+
+    # Re-exported singletons (all.pyi `from <module> import NAME as NAME`)
+    # become ALIAS entries without their own type.  The plugin types a
+    # namespace constant through its valueType (SageTypeProvider lowers it to
+    # the declared class), so an alias entry without one degrades every
+    # `NAME(...)` chain to untyped — propagate the first target valueType.
+    entries_by_name = {entry["qualifiedName"]: entry for entry in entries}
+    for entry in entries:
+        if entry["kind"] != "ALIAS" or "valueType" in entry:
+            continue
+        for target_name in entry.get("aliases", []):
+            target = entries_by_name.get(target_name)
+            if target is not None and "valueType" in target:
+                entry["valueType"] = target["valueType"]
+                break
+
     index = {"schemaVersion": SCHEMA_VERSION, "sageVersion": sage_version, "pythonVersion": python_version, "generatorVersion": GENERATOR_VERSION, "sourceDigests": source_digests(entries), "entries": entries}
     if metadata:
         if metadata.get("artifactId"):

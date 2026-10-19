@@ -186,6 +186,27 @@ def install_stub_package(
             "sage-pycharm-stubgen) or pass --force."
         )
 
+    # A tree that loses a large share of the previously owned stubs is almost
+    # always a mis-scoped run (e.g. a ``--pattern``/discovery regression that
+    # silently dropped every *.pyx module), not a real shrinking of Sage:
+    # installing it would amputate working stubs (integer_ring, integer, ...)
+    # and silently degrade IDE resolution.  Refuse unless ``force`` is set.
+    planned = {f.relative_to(source) for f in generated_files}
+    planned.update((Path("py.typed"), Path(CURATED_DOCS_NAME)))
+    dropped = previously_owned - planned
+    shrink_budget = max(8, len(previously_owned) // 10)
+    if previously_owned and not force and len(dropped) > shrink_budget:
+        sample = ", ".join(
+            path.as_posix() for path in sorted(dropped)[:5]
+        )
+        raise RuntimeError(
+            f"Refusing to install: this run produces {len(planned)} file(s) but "
+            f"{len(dropped)} stub(s) owned by the previous install are missing "
+            f"from the generated tree (e.g. {sample}).  The tree was likely "
+            "built with narrower --pattern/--exclude than the previous run; "
+            "regenerate without those restrictions or pass --force."
+        )
+
     pending: list[tuple[Path, Path]] = []
     preserved_existing = 0
     preserved_paths: list[str] = []
