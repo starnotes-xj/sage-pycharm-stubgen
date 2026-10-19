@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -531,6 +532,48 @@ class PerceptionTests(unittest.TestCase):
                 "sage.demo.compiled", "Thing.order", root
             )
             self.assertEqual(variants, [("int", "pyi")])
+
+    def test_manifest_owned_sibling_stub_is_circular_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, pkg = self._tree(tmp)
+            nested = pkg / "sub"
+            nested.mkdir()
+            (nested / "compiled.pyx").write_text(
+                "def order(self):\n    return 5\n", encoding="utf-8"
+            )
+            (nested / "compiled.pyi").write_text(
+                "class Thing:\n    def order(self) -> int: ...\n", encoding="utf-8"
+            )
+            from sage_pycharm_stubgen.conformance import resolve_declaration
+
+            # Without a manifest the sibling is a genuine upstream stub.
+            variants = resolve_declaration(
+                "sage.demo.sub.compiled", "Thing.order", root
+            )
+            self.assertEqual(variants, [("int", "pyi")])
+
+            # An in-place install manifest at the package root owns that
+            # stub no matter how deep the module sits: matching a stub we
+            # installed ourselves is the curated table agreeing with
+            # itself, so it must not count as upstream coverage.  Format 2
+            # manifests list files under "file_hashes".
+            (root / ".sage-pycharm-stubgen-in-place.json").write_text(
+                json.dumps({"file_hashes": {"demo/sub/compiled.pyi": "0" * 64}}),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                resolve_declaration("sage.demo.sub.compiled", "Thing.order", root),
+                [],
+            )
+
+            # Legacy format-1 manifests list plain paths under "files".
+            (root / ".sage-pycharm-stubgen-in-place.json").write_text(
+                json.dumps({"files": ["demo/sub/compiled.pyi"]}), encoding="utf-8"
+            )
+            self.assertEqual(
+                resolve_declaration("sage.demo.sub.compiled", "Thing.order", root),
+                [],
+            )
 
     def test_pyi_root_previews_open_pr_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

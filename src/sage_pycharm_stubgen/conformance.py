@@ -419,17 +419,26 @@ def _stubgen_owned_stubs(module_file: Path) -> frozenset[Path]:
     Those stubs carry the curated fixes — matching against them is circular
     (the curated table agreeing with itself).  The in-place install manifest
     lists every file we own; stubs NOT in it are assumed to ship with Sage.
+
+    The manifest sits at the installed Sage package root, which is an
+    arbitrary number of levels above the module file (``sage/a/b/mod.py``
+    needs three hops) — so every ancestor is checked, nearest first.  Both
+    manifest generations are honored: ``files`` (list) and ``file_hashes``
+    (dict, format 2+).
     """
-    for directory in (module_file.parent, module_file.parent.parent):
+    for directory in module_file.parents:
         manifest = directory / ".sage-pycharm-stubgen-in-place.json"
         if manifest.is_file():
             try:
                 import json
 
                 payload = json.loads(manifest.read_text(encoding="utf-8"))
+                owned = list(payload.get("files", []))
+                hashes = payload.get("file_hashes")
+                if isinstance(hashes, dict):
+                    owned.extend(hashes)
                 return frozenset(
-                    (directory / Path(raw)).resolve()
-                    for raw in payload.get("files", [])
+                    (directory / Path(raw)).resolve() for raw in owned
                 )
             except (OSError, ValueError):
                 return frozenset()
