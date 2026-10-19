@@ -351,6 +351,11 @@ class LoadPreparseFileTests(unittest.TestCase):
             "sage": sage,
             "sage.misc": misc,
             "sage.misc.preparser": old_location,
+            # In a full-suite run on WSL a real Sage is already imported
+            # (e.g. by the export-pyi probe machinery), and the cached
+            # sys.modules entry would satisfy the new-location import,
+            # bypassing the fallback under test.  ``None`` blocks it.
+            "sage.repl.preparse": None,
         }
 
         with mock.patch.dict(sys.modules, modules):
